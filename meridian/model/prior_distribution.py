@@ -262,8 +262,8 @@ def _convert_to_deterministic_0_distribution(
   ):
     warnings.warn(
         'Hierarchical distribution parameters must be deterministically zero'
-        ' for national models. {} has been automatically set to to'
-        ' to Deterministic(0) set .'.format(distribution.name)
+        ' for national models. {} has been automatically set to'
+        ' Deterministic(0).'.format(distribution.name)
     )
     return tfp.distributions.Deterministic(loc=0, name=distribution.name)
   else:
