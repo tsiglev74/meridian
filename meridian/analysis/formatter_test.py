@@ -71,6 +71,17 @@ class FormatterTest(parameterized.TestCase):
     formatted_number = formatter.format_monetary_num(num)
     self.assertEqual(formatted_number, expected)
 
+  @parameterized.named_parameters(
+      ('decimals', -0.1234, 2, '$', '-$0.12'),
+      ('zero_precision_thousands', 12345, 0, '', '12k'),
+      ('round_up_thousands', 14900, 0, '$', '$15k'),
+      ('million_value', 3.21e6, 2, '$', '$3.21M'),
+      ('negative', -12345, 0, '$', '-$12k'),
+  )
+  def test_compact_number_correct(self, num, precision, currency, expected):
+    formatted_number = formatter.compact_number(num, precision, currency)
+    self.assertEqual(formatted_number, expected)
+
   def test_create_card_html_structure(self):
     template_env = formatter.create_template_env()
     card_spec = formatter.CardSpec(id='test_id', title='test_title')
@@ -159,7 +170,7 @@ class FormatterTest(parameterized.TestCase):
     template_env = formatter.create_template_env()
     card_spec = formatter.CardSpec(id='test_id', title='test_title')
     stats_spec = formatter.StatsSpec(
-        title='stats_title', stat='test_stat', note='Fixed', delta='+0.3'
+        title='stats_title', stat='test_stat', delta='+0.3'
     )
     card_html = ET.fromstring(
         formatter.create_card_html(
@@ -173,10 +184,8 @@ class FormatterTest(parameterized.TestCase):
     self.assertEqual(stats_html[0][0].text, 'stats_title')
     self.assertEqual(stats_html[0][1].tag, 'stat')
     self.assertEqual(stats_html[0][1].text, 'test_stat')
-    self.assertEqual(stats_html[0][2].tag, 'note')
-    self.assertEqual(stats_html[0][2].text, 'Fixed')
-    self.assertEqual(stats_html[0][3].tag, 'delta')
-    self.assertContainsSubset('+0.3', stats_html[0][3].text)
+    self.assertEqual(stats_html[0][2].tag, 'delta')
+    self.assertContainsSubset('+0.3', stats_html[0][2].text)
 
 
 if __name__ == '__main__':

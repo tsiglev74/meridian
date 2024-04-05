@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Module to output budget optimization scenarios on the Meridian model."""
+"""Module to output budget optimization scenarios based on the model."""
 
 from collections.abc import Mapping, Sequence
 import math
@@ -30,6 +30,14 @@ import pandas as pd
 import tensorflow as tf
 import xarray as xr
 
+
+__all__ = [
+    'BudgetOptimizer',
+    'OptimizationNotRunError',
+]
+
+# Disable max row limitations in Altair.
+alt.data_transformers.disable_max_rows()
 
 _SpendConstraint: TypeAlias = float | Sequence[float]
 
@@ -121,20 +129,29 @@ class BudgetOptimizer:
     self._analyzer = analyzer.Analyzer(self._meridian)
     self._template_env = formatter.create_template_env()
     self._nonoptimized_data = None
+    self._nonoptimized_data_with_optimal_freq = None
     self._optimized_data = None
     self._spend_bounds = None
     self._use_optimal_frequency = True
+    self._spend_ratio = None
 
   @property
   def nonoptimized_data(self) -> xr.Dataset:
     """Dataset holding the non-optimized budget metrics.
 
+    For channels that have reach and frequency data, their performance metrics
+    (ROI, mROI, incremental impact, CPIK) are based on historical frequency.
+
     The dataset contains the following:
 
       - Coordinates: `channel`
-      - Data variables: `spend`, `pct_of_spend`, `roi`, `mroi`,
+      - Data variables: `spend`, `pct_of_spend`, `roi`, `mroi`, `cpik`,
         `incremental_impact`
-      - Attributes: `budget`, `profit`, `total_incremental_impact`, `total_roi`
+      - Attributes: `start_date`, `end_date`, `budget`, `profit`,
+        `total_incremental_impact`, `total_roi`, `total_cpik`
+
+    ROI and mROI are only included if `revenue_per_kpi` is known. Otherwise,
+    CPIK is used.
 
     Raises:
       OptimizationNotRunError: Occurs when the optimization has not been run.
@@ -148,15 +165,51 @@ class BudgetOptimizer:
     return self._nonoptimized_data
 
   @property
-  def optimized_data(self) -> xr.Dataset:
-    """Dataset holding the optimized budget metrics.
+  def nonoptimized_data_with_optimal_freq(self) -> xr.Dataset:
+    """Dataset holding the non-optimized budget metrics.
+
+    For channels that have reach and frequency data, their performance metrics
+    (ROI, mROI, incremental impact, CPIK) are based on optimal frequency.
 
     The dataset contains the following:
 
       - Coordinates: `channel`
-      - Data variables: `spend`, `pct_of_spend`, `incremental_impact`,
-        `roi, mroi`
-      - Attributes: `budget`, `profit`, `total_incremental_impact`, `total_roi`
+      - Data variables: `spend`, `pct_of_spend`, `roi`, `mroi`, `cpik`,
+        `incremental_impact`
+      - Attributes: `start_date`, `end_date`, `budget`, `profit`,
+        `total_incremental_impact`, `total_roi`, `total_cpik`
+
+    ROI and mROI are only included if `revenue_per_kpi` is known. Otherwise,
+    CPIK is used.
+
+    Raises:
+      OptimizationNotRunError: Occurs when the optimization has not been run.
+      The `nonoptimized_data` is only available after running the optimization
+      because certain data points are dependent on the optimization parameters.
+    """
+    if self._nonoptimized_data_with_optimal_freq is None:
+      raise OptimizationNotRunError(
+          'Non-optimized data is only available after running optimize().'
+      )
+    return self._nonoptimized_data_with_optimal_freq
+
+  @property
+  def optimized_data(self) -> xr.Dataset:
+    """Dataset holding the optimized budget metrics.
+
+    For channels that have reach and frequency data, their performance metrics
+    (ROI, mROI, incremental impact) are based on optimal frequency.
+
+    The dataset contains the following:
+
+      - Coordinates: `channel`
+      - Data variables: `spend`, `pct_of_spend`, `roi`, `mroi`, `cpik`,
+        `incremental_impact`
+      - Attributes: `start_date`, `end_date`, `budget`, `profit`,
+        `total_incremental_impact`, `total_roi`, `total_cpik`, `fixed_budget`
+
+    ROI and mROI are only included if `revenue_per_kpi` is known. Otherwise,
+    CPIK is used.
 
     Raises:
       OptimizationNotRunError: Occurs when the optimization has not been run.
@@ -243,6 +296,7 @@ class BudgetOptimizer:
     round_factor = _get_round_factor(budget, gtol)
     step_size = 10 ** (-round_factor)
     rounded_spend = np.round(spend, round_factor).astype(int)
+    self._spend_ratio = spend / hist_spend
     if self._meridian.n_rf_channels > 0 and use_optimal_frequency:
       optimal_frequency = tf.convert_to_tensor(
           self._analyzer.optimal_freq(
@@ -293,14 +347,23 @@ class BudgetOptimizer:
         selected_times=selected_time_dims,
         batch_size=batch_size,
     )
+    self._nonoptimized_data_with_optimal_freq = self._create_budget_dataset(
+        hist_spend=hist_spend,
+        spend=rounded_spend,
+        selected_times=selected_time_dims,
+        optimal_frequency=optimal_frequency,
+        batch_size=batch_size,
+    )
     self._optimized_data = self._create_budget_dataset(
-        hist_spend=spend,
+        hist_spend=hist_spend,
         spend=optimal_spend,
         selected_times=selected_time_dims,
         optimal_frequency=optimal_frequency,
         attrs=constraints,
         batch_size=batch_size,
     )
+    self._spend_grid = spend_grid
+    self._incremental_impact_grid = incremental_impact_grid
 
   def output_optimization_summary(self, filename: str, filepath: str):
     """Generates and saves the HTML optimization summary output."""
@@ -429,7 +492,7 @@ class BudgetOptimizer:
 
     Args:
       optimized: If `True`, shows the optimized spend. If `False`, shows the
-      non-optimized spend.
+        non-optimized spend.
 
     Returns:
       An Altair pie chart showing the spend by channel.
@@ -623,7 +686,7 @@ class BudgetOptimizer:
       self, n_top_channels: int | None
   ) -> pd.DataFrame:
     """Calculates the response curve data, specific to the optimization."""
-    if self._spend_bounds is None:
+    if self._spend_bounds is None or self._spend_ratio is None:
       raise OptimizationNotRunError(
           'Optimization response curves are only available after running the'
           ' optimization.'
@@ -633,14 +696,14 @@ class BudgetOptimizer:
         (self.optimized_data.start_date, self.optimized_data.end_date)
     )
     lower_bound = (
-        self._spend_bounds[0].repeat(len(channels))
+        self._spend_bounds[0].repeat(len(channels)) * self._spend_ratio
         if len(self._spend_bounds[0]) == 1
-        else self._spend_bounds[0]
+        else self._spend_bounds[0] * self._spend_ratio
     )
     upper_bound = (
-        self._spend_bounds[1].repeat(len(channels))
+        self._spend_bounds[1].repeat(len(channels)) * self._spend_ratio
         if len(self._spend_bounds[1]) == 1
-        else self._spend_bounds[1]
+        else self._spend_bounds[1] * self._spend_ratio
     )
     spend_constraints_df = pd.DataFrame({
         c.CHANNEL: channels,
@@ -672,12 +735,15 @@ class BudgetOptimizer:
         )
         .reset_index()
     )
-    response_curves_df[c.SPEND_LEVEL] = np.where(
-        response_curves_df[c.SPEND_MULTIPLIER] == 1.0,
-        summary_text.CURRENT_SPEND_LABEL,
-        pd.NA,
+    current_points_df = (
+        self.nonoptimized_data_with_optimal_freq[
+            [c.SPEND, c.INCREMENTAL_IMPACT]
+        ]
+        .to_dataframe()
+        .reset_index()
+        .rename(columns={c.INCREMENTAL_IMPACT: c.MEAN})
     )
-
+    current_points_df[c.SPEND_LEVEL] = summary_text.NONOPTIMIZED_SPEND_LABEL
     optimal_points_df = (
         self.optimized_data[[c.SPEND, c.INCREMENTAL_IMPACT]]
         .to_dataframe()
@@ -686,7 +752,9 @@ class BudgetOptimizer:
     )
     optimal_points_df[c.SPEND_LEVEL] = summary_text.OPTIMIZED_SPEND_LABEL
 
-    concat_df = pd.concat([response_curves_df, optimal_points_df])
+    concat_df = pd.concat(
+        [response_curves_df, optimal_points_df, current_points_df]
+    )
     merged_df = concat_df.merge(spend_constraints_df, on=c.CHANNEL)
     if n_top_channels:
       top_channels = self._get_top_channels_by_spend(n_top_channels)
@@ -816,8 +884,8 @@ class BudgetOptimizer:
   ) -> tuple[np.ndarray, np.ndarray]:
     """Validates and returns the spend constraint requirements."""
 
-    def get_const_array(const: _SpendConstraint) -> np.ndarray:
-      if not const:
+    def get_const_array(const: _SpendConstraint | None) -> np.ndarray:
+      if const is None:
         const = np.array([0.3]) if fixed_budget else np.array([1.0])
       elif isinstance(const, (float, int)):
         const = np.array([const])
@@ -943,61 +1011,65 @@ class BudgetOptimizer:
             hist_spend, spend, optimal_frequency
         )
     )
-
+    use_kpi = self._meridian.revenue_per_kpi is None
     incremental_impact = tf.math.reduce_mean(
         self._analyzer.incremental_impact(
             new_media=new_media,
             new_reach=new_reach,
             new_frequency=new_frequency,
             selected_times=selected_times,
+            use_kpi=use_kpi,
             batch_size=batch_size,
-        ),
-        axis=(0, 1),
-    )
-    roi = incremental_impact / spend
-    marginal_roi = tf.math.reduce_mean(
-        self._analyzer.marginal_roi(
-            new_media=new_media,
-            new_reach=new_reach,
-            new_frequency=new_frequency,
-            new_media_spend=new_media_spend,
-            new_rf_spend=new_rf_spend,
-            selected_times=selected_times,
-            batch_size=batch_size,
-            by_reach=True,
         ),
         axis=(0, 1),
     )
     budget = np.sum(spend)
     total_incremental_impact = np.sum(incremental_impact)
     all_times = self._meridian.input_data.time.values.tolist()
+
+    data_vars = {
+        c.SPEND: ([c.CHANNEL], spend),
+        c.PCT_OF_SPEND: ([c.CHANNEL], spend / sum(spend)),
+        c.INCREMENTAL_IMPACT: ([c.CHANNEL], incremental_impact),
+    }
+    attributes = {
+        c.START_DATE: min(selected_times) if selected_times else all_times[0],
+        c.END_DATE: max(selected_times) if selected_times else all_times[-1],
+        c.BUDGET: budget,
+        c.PROFIT: total_incremental_impact - budget,
+        c.TOTAL_INCREMENTAL_IMPACT: total_incremental_impact,
+    }
+    if use_kpi:
+      data_vars[c.CPIK] = ([c.CHANNEL], spend / incremental_impact)
+      attributes[c.TOTAL_CPIK] = budget / total_incremental_impact
+    else:
+      roi = incremental_impact / spend
+      marginal_roi = tf.math.reduce_mean(
+          self._analyzer.marginal_roi(
+              new_media=new_media,
+              new_reach=new_reach,
+              new_frequency=new_frequency,
+              new_media_spend=new_media_spend,
+              new_rf_spend=new_rf_spend,
+              selected_times=selected_times,
+              batch_size=batch_size,
+              by_reach=True,
+          ),
+          axis=(0, 1),
+      )
+      data_vars[c.ROI] = ([c.CHANNEL], roi)
+      data_vars[c.MROI] = ([c.CHANNEL], marginal_roi)
+      attributes[c.TOTAL_ROI] = total_incremental_impact / budget
+
     return xr.Dataset(
-        data_vars={
-            c.SPEND: ([c.CHANNEL], spend),
-            c.PCT_OF_SPEND: ([c.CHANNEL], spend / sum(spend)),
-            c.INCREMENTAL_IMPACT: ([c.CHANNEL], incremental_impact),
-            c.ROI: ([c.CHANNEL], roi),
-            c.MROI: ([c.CHANNEL], marginal_roi),
-        },
+        data_vars=data_vars,
         coords={
             c.CHANNEL: (
                 [c.CHANNEL],
                 self._meridian.input_data.get_all_channels(),
             ),
         },
-        attrs={
-            c.BUDGET: budget,
-            c.PROFIT: total_incremental_impact - budget,
-            c.TOTAL_INCREMENTAL_IMPACT: total_incremental_impact,
-            c.TOTAL_ROI: total_incremental_impact / budget,
-            c.START_DATE: (
-                min(selected_times) if selected_times else all_times[0]
-            ),
-            c.END_DATE: (
-                max(selected_times) if selected_times else all_times[-1]
-            ),
-        }
-        | (attrs or {}),
+        attrs=attributes | (attrs or {}),
     )
 
   def _get_optimization_bounds(
@@ -1114,12 +1186,14 @@ class BudgetOptimizer:
     # incremental_impact returns a three dimensional tensor with dims
     # (n_chains x n_draws x n_total_channels). Incremental_impact_grid requires
     # incremental impact by channel.
+    use_kpi = self._meridian.revenue_per_kpi is None
     incremental_impact_grid[i, :] = np.mean(
         self._analyzer.incremental_impact(
             new_media=new_media,
             new_reach=new_reach,
             new_frequency=new_frequency,
             selected_times=selected_times,
+            use_kpi=use_kpi,
             batch_size=batch_size,
         ),
         (c.CHAINS_DIMENSION, c.DRAWS_DIMENSION),
@@ -1324,14 +1398,47 @@ class BudgetOptimizer:
         self._create_response_curves_section(),
     ]
 
-  # TODO(b/319501774): Update insights when there's varied spend bounds.
   def _create_scenario_plan_section(self) -> str:
     """Creates the HTML card snippet for the scenario plan section."""
-    impact = self._kpi_or_revenue()
+    assert self._spend_bounds is not None
     card_spec = formatter.CardSpec(
         id=summary_text.SCENARIO_PLAN_CARD_ID,
         title=summary_text.SCENARIO_PLAN_CARD_TITLE,
     )
+
+    scenario_type = (
+        summary_text.FIXED_BUDGET_LABEL.lower()
+        if self.optimized_data.fixed_budget
+        else summary_text.FLEXIBLE_BUDGET_LABEL
+    )
+    if len(self._spend_bounds[0]) > 1 or len(self._spend_bounds[1]) > 1:
+      insights = summary_text.SCENARIO_PLAN_BASE_INSIGHTS_FORMAT.format(
+          scenario_type=scenario_type,
+          start_date=self.optimized_data.start_date,
+          end_date=self.optimized_data.end_date,
+      )
+    else:
+      lower_bound = int((1 - self._spend_bounds[0][0]) * 100)
+      upper_bound = int((self._spend_bounds[1][0] - 1) * 100)
+      insights = summary_text.SCENARIO_PLAN_INSIGHTS_FORMAT.format(
+          scenario_type=scenario_type,
+          lower_bound=lower_bound,
+          upper_bound=upper_bound,
+          start_date=self.optimized_data.start_date,
+          end_date=self.optimized_data.end_date,
+      )
+    return formatter.create_card_html(
+        self._template_env,
+        card_spec,
+        insights,
+        stats_specs=self._create_scenario_stats_specs(),
+    )
+
+  def _create_scenario_stats_specs(self) -> Sequence[formatter.StatsSpec]:
+    """Creates the stats to fill the scenario plan section."""
+    impact = self._kpi_or_revenue()
+    budget_diff = self.optimized_data.budget - self.nonoptimized_data.budget
+    budget_prefix = '+' if budget_diff > 0 else ''
     current_budget = formatter.StatsSpec(
         title=summary_text.CURRENT_BUDGET_LABEL,
         stat=formatter.format_monetary_num(self.nonoptimized_data.budget),
@@ -1339,23 +1446,33 @@ class BudgetOptimizer:
     optimized_budget = formatter.StatsSpec(
         title=summary_text.OPTIMIZED_BUDGET_LABEL,
         stat=formatter.format_monetary_num(self.optimized_data.budget),
-        note=summary_text.FIXED_BUDGET_LABEL
-        if self.optimized_data.fixed_budget
-        else summary_text.FLEXIBLE_BUDGET_LABEL,
+        delta=(budget_prefix + formatter.format_monetary_num(budget_diff)),
     )
 
-    roi_diff = round(
-        self.optimized_data.total_roi - self.nonoptimized_data.total_roi, 1
+    if impact == c.REVENUE:
+      diff = round(
+          self.optimized_data.total_roi - self.nonoptimized_data.total_roi, 1
+      )
+      current_performance_title = summary_text.CURRENT_ROI_LABEL
+      current_performance_stat = round(self.nonoptimized_data.total_roi, 1)
+      optimized_performance_title = summary_text.OPTIMIZED_ROI_LABEL
+      optimized_performance_stat = round(self.optimized_data.total_roi, 1)
+      optimized_performance_diff = f'+{str(diff)}' if diff > 0 else str(diff)
+    else:
+      diff = self.optimized_data.total_cpik - self.nonoptimized_data.total_cpik
+      current_performance_title = summary_text.CURRENT_CPIK_LABEL
+      current_performance_stat = f'${self.nonoptimized_data.total_cpik:.2f}'
+      optimized_performance_title = summary_text.OPTIMIZED_CPIK_LABEL
+      optimized_performance_stat = f'${self.optimized_data.total_cpik:.2f}'
+      optimized_performance_diff = formatter.compact_number(diff, 2, '$')
+    current_performance = formatter.StatsSpec(
+        title=current_performance_title,
+        stat=current_performance_stat,
     )
-    roi_prefix = '+' if roi_diff > 0 else ''
-    current_roi = formatter.StatsSpec(
-        title=summary_text.CURRENT_ROI_LABEL,
-        stat=round(self.nonoptimized_data.total_roi, 1),
-    )
-    optimized_roi = formatter.StatsSpec(
-        title=summary_text.OPTIMIZED_ROI_LABEL,
-        stat=round(self.optimized_data.total_roi, 1),
-        delta=roi_prefix + str(roi_diff),
+    optimized_performance = formatter.StatsSpec(
+        title=optimized_performance_title,
+        stat=optimized_performance_stat,
+        delta=optimized_performance_diff,
     )
 
     inc_impact_diff = (
@@ -1377,30 +1494,14 @@ class BudgetOptimizer:
         delta=inc_impact_prefix
         + formatter.format_monetary_num(inc_impact_diff),
     )
-    assert self._spend_bounds is not None
-    stats_specs = [
+    return [
         current_budget,
         optimized_budget,
-        current_roi,
-        optimized_roi,
+        current_performance,
+        optimized_performance,
         current_inc_impact,
         optimized_inc_impact,
     ]
-    # If revenue_per_kpi doesn't exist, remove the ROI specs.
-    if self._meridian.input_data.revenue_per_kpi is None:
-      stats_specs.remove(current_roi)
-      stats_specs.remove(optimized_roi)
-    return formatter.create_card_html(
-        self._template_env,
-        card_spec,
-        summary_text.SCENARIO_PLAN_INSIGHTS_FORMAT.format(
-            lower_bound=self._spend_bounds[0][0],
-            upper_bound=self._spend_bounds[1][0],
-            start_date=self.optimized_data.start_date,
-            end_date=self.optimized_data.end_date,
-        ),
-        stats_specs=stats_specs,
-    )
 
   def _create_budget_allocation_section(self) -> str:
     """Creates the HTML card snippet for the budget allocation section."""
@@ -1411,6 +1512,7 @@ class BudgetOptimizer:
     )
     spend_delta = formatter.ChartSpec(
         id=summary_text.SPEND_DELTA_CHART_ID,
+        description=summary_text.SPEND_DELTA_CHART_INSIGHTS,
         chart_json=self.plot_spend_delta().to_json(),
     )
     spend_allocation = formatter.ChartSpec(
@@ -1418,8 +1520,9 @@ class BudgetOptimizer:
         chart_json=self.plot_budget_allocation().to_json(),
     )
     impact_delta = formatter.ChartSpec(
-        id=summary_text.IMPACT_DELTA_CHART_ID.format(
-            impact=impact.lower() if impact == c.KPI else impact
+        id=summary_text.IMPACT_DELTA_CHART_ID,
+        description=summary_text.IMPACT_DELTA_CHART_INSIGHTS_FORMAT.format(
+            impact=impact
         ),
         chart_json=self.plot_incremental_impact_delta().to_json(),
     )
@@ -1428,7 +1531,7 @@ class BudgetOptimizer:
         title=summary_text.SPEND_ALLOCATION_CHART_TITLE,
         column_headers=[
             summary_text.CHANNEL_LABEL,
-            summary_text.CURRENT_SPEND_LABEL,
+            summary_text.NONOPTIMIZED_SPEND_LABEL,
             summary_text.OPTIMIZED_SPEND_LABEL,
         ],
         row_values=self._create_budget_allocation_table().values.tolist(),
@@ -1480,7 +1583,9 @@ class BudgetOptimizer:
     return formatter.create_card_html(
         self._template_env,
         card_spec,
-        summary_text.OPTIMIZED_RESPONSE_CURVES_INSIGHTS,
+        summary_text.OPTIMIZED_RESPONSE_CURVES_INSIGHTS_FORMAT.format(
+            impact=self._kpi_or_revenue(),
+        ),
         [response_curves],
     )
 

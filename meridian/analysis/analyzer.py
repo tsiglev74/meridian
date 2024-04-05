@@ -16,7 +16,7 @@
 
 from collections.abc import Mapping, Sequence
 import dataclasses
-from itertools import chain
+import itertools
 import warnings
 
 from meridian import constants
@@ -28,6 +28,11 @@ import pandas as pd
 import tensorflow as tf
 import tensorflow_probability as tfp
 import xarray as xr
+
+
+__all__ = [
+    "Analyzer",
+]
 
 
 def _calc_rsquared(expected, actual):
@@ -93,9 +98,9 @@ def _scale_tensors_by_multiplier(
   """Get scaled tensors for incremental impact calculation.
 
   Args:
-    media: Optional Tensor with dimensions matching media.
-    reach: Optional Tensor with dimensions matching reach.
-    frequency: Optional Tensor with dimensions matching frequency.
+    media: Optional tensor with dimensions matching media.
+    reach: Optional tensor with dimensions matching reach.
+    frequency: Optional tensor with dimensions matching frequency.
     multiplier: Float indicating the factor to scale tensors by.
     by_reach: Boolean indicating whether to scale reach or frequency when rf
       data is available.
@@ -238,6 +243,14 @@ class Analyzer:
     if not use_kpi and self._meridian.revenue_per_kpi is None:
       raise ValueError(
           "`use_kpi` must be True when `revenue_per_kpi` is not defined."
+      )
+
+  def _validate_roi_functionality(self) -> None:
+    """Validates whether ROI metrics can be computed."""
+    if self._meridian.revenue_per_kpi is None:
+      raise ValueError(
+          "ROI-related metrics can't be computed when `revenue_per_kpi` is not"
+          " defined."
       )
 
   def _get_adstock_dataframe(
@@ -456,8 +469,8 @@ class Analyzer:
     """Filters and/or aggregates geo and time dimensions of a tensor.
 
     Args:
-      tensor: Tensor with dimensions `[..., n_geos, n_times]` or
-      `[..., n_geos, n_times, n_channels]`.
+      tensor: Tensor with dimensions `[..., n_geos, n_times]` or `[..., n_geos,
+        n_times, n_channels]`.
       selected_geos: Optional list containing a subset of geos to include. By
         default, all geos are included. The selected geos should match those in
         `InputData.geo`.
@@ -539,10 +552,10 @@ class Analyzer:
   ) -> tf.Tensor:
     """Calculates either the expected impact posterior or prior.
 
-    This calculates E(Impact|Media, Controls) for each posterior (or prior)
-    parameter draw, where Impact refers to either `revenue` if `use_kpi`=False,
-    or `kpi` if `use_kpi`=True. When `revenue_per_kpi` is not defined, `use_kpi`
-    cannot be False.
+    This calculates `E(Impact|Media, Controls)` for each posterior (or prior)
+    parameter draw, where `Impact` refers to either `revenue` if
+    `use_kpi=False`, or `kpi` if `use_kpi=True`. When `revenue_per_kpi` is not
+    defined, `use_kpi` cannot be `False`.
 
     By default, this calculates expected impact conditional on the media and
     control values that the Meridian object was initialized with. The user can
@@ -579,8 +592,8 @@ class Analyzer:
         impact after transformation by `KpiTransformer`, reflecting how its
         represented within the model.
       use_kpi: Boolean. If `True`, the expected KPI is calculated. If `False`,
-        the expected revenue (KPI * `revenue_per_kpi`) is calculated. Only used
-        if `inverse_transform_impact=True`. `use_kpi` must be True when
+        the expected revenue `(kpi * revenue_per_kpi)` is calculated. Only used
+        if `inverse_transform_impact=True`. `use_kpi` must be `True` when
         `revenue_per_kpi` is not defined.
       batch_size: Integer representing the maximum draws per chain in each
         batch. The calculation is run in batches to avoid memory exhaustion. If
@@ -589,8 +602,8 @@ class Analyzer:
 
     Returns:
       Tensor of expected impact (either KPI or revenue, depending on the
-      `use_kpi` argument) with dimensions (`n_chains, n_draws, n_geos,
-      n_times`). The `n_geos` and `n_times` dimensions is dropped if
+      `use_kpi` argument) with dimensions `(n_chains, n_draws, n_geos,
+      n_times)`. The `n_geos` and `n_times` dimensions is dropped if
       `aggregate_geos=True` or `aggregate_time=True`, respectively.
     Raises:
       NotFittedModelError: if `sample_posterior()` (for `use_posterior=True`)
@@ -786,7 +799,7 @@ class Analyzer:
       aggregate_geos: bool = True,
       aggregate_times: bool = True,
   ) -> tf.Tensor:
-    """Computes incremental sales on a batch of data.
+    """Computes incremental impact (revenue or KPI) on a batch of data.
 
     Args:
       media_scaled: `media` data scaled by the per-geo median, normalized by the
@@ -830,7 +843,7 @@ class Analyzer:
         periods.
 
     Returns:
-      Tensor of incremental sales modeled from parameter distributions.
+      Tensor of incremental impact modeled from parameter distributions.
     """
     self._check_revenue_data_exists(use_kpi)
     transformed_impact = self._get_modeled_incremental_kpi(
@@ -847,7 +860,7 @@ class Analyzer:
         beta_grf=beta_grf,
     )
     incremental_impact = (
-        self._inverse_impact(transformed_impact, use_kpi)
+        self._inverse_impact(transformed_impact, use_kpi=use_kpi)
         if inverse_transform_impact
         else transformed_impact
     )
@@ -876,12 +889,12 @@ class Analyzer:
     """Calculates either the incremental impact posterior or prior.
 
     This calculates the incremental impact for each posterior or prior parameter
-    draw. Incremental impact is defined as E(Impact|Media, Controls) minus
-    E(Impact|Media_0, Controls), where `Media_0` means that media execution for
-    a given channel is set to zero and all other media are set to the values
+    draw. Incremental impact is defined as `E(Impact|Media, Controls)` minus
+    `E(Impact|Media_0, Controls)`, where `Media_0` means that media execution
+    for a given channel is set to zero and all other media are set to the values
     that the Meridian object was initialized with. This is the case for all geos
     and time periods, including lag periods. Impact refers to either
-    `revenue` if `use_kpi`=False, or `kpi` if `use_kpi`=True. When
+    `revenue` if `use_kpi=False`, or `kpi` if `use_kpi=True`. When
     `revenue_per_kpi` is not defined, `use_kpi` cannot be False.
 
     By default, this calculates incremental impact conditional on the media
@@ -903,10 +916,10 @@ class Analyzer:
     allowed with this method because of the additional complexites
     this introduces:
 
-    1. Corresponding price (revenue per KPI) data is also needed
-    2. If the model contains weekly effect parameters, then some method is
-      needed to estimate or predict these effects for time periods outside of
-      the training data window.
+    1.  corresponding price (revenue per KPI) data is also needed
+    2.  if the model contains weekly effect parameters, then some method is
+        needed to estimate or predict these effects for time periods outside of
+        the training data window.
 
     Args:
       use_posterior: Boolean. If `True`, then the incremental impact posterior
@@ -1038,21 +1051,21 @@ class Analyzer:
 
     Args:
       new_media: Optional. Media data, with the same shape as
-        meridian.input.data.media, to be used to compute ROI for alternative
-        media data. Default uses meridian.input.data.media.
-      new_media_spend: Optional. Media_spend data, with the same shape as
-        meridian.input.data.media_spend, to be used to compute ROI for
-        alternative media_spend data. Default uses
-        meridian.input.data.media_spend.
+        `meridian.input_data.media`, to be used to compute ROI for alternative
+        media data. Default uses `meridian.input_data.media`.
+      new_media_spend: Optional. Media spend data, with the same shape as
+        `meridian.input_data.media_spend`, to be used to compute ROI for
+        alternative `media_spend` data. Default uses
+        `meridian.input_data.media_spend`.
       new_reach: Optional. Reach data with the same shape as
-        meridian.input.data.reach, to be used to compute ROI for alternative
-        reach data. Default uses meridian.input.data.reach.
+        `meridian.input_data.reach`, to be used to compute ROI for alternative
+        reach data. Default uses `meridian.input_data.reach`.
       new_frequency: Optional. Frequency data with the same shape as
-        meridian.input.data.frequency, to be used to compute ROI for alternative
-        frequency data. Default uses meridian.input.data.frequency.
+        `meridian.input_data.frequency`, to be used to compute ROI for
+        alternative frequency data. Defaults to `meridian.input_data.frequency`.
       new_rf_spend: Optional. RF Spend data with the same shape as
-        meridian.input.data.rf_spend, to be used to compute ROI for alternative
-        rf_spend data. Default uses meridian.input.data.rf_spend.
+        `meridian.input_data.rf_spend`, to be used to compute ROI for
+        alternative `rf_spend` data. Defaults to `meridian.input_data.rf_spend`.
       selected_geos: Optional. Contains a subset of geos to include. By default,
         all geos are included.
       selected_times: Optional. Contains a subset of times to include. By
@@ -1197,26 +1210,26 @@ class Analyzer:
       use_posterior: If `True` then the posterior distribution is calculated.
         Otherwise, the prior distribution is calculated.
       new_media: Optional. Media data with the same shape as
-        `meridian.input.data.media`. Used to compute ROI for alternative
-        media data. Default uses `meridian.input.data.media`.
-      new_media_spend: Optional. `Media_spend` data with the same shape as
-        `meridian.input.data.spend`. Used to compute ROI for alternative
-        `media_spend` data. Default uses `meridian.input.data.media_spend`.
+        `meridian.input_data.media`. Used to compute ROI for alternative media
+        data. Default uses `meridian.input_data.media`.
+      new_media_spend: Optional. Media spend data with the same shape as
+        `meridian.input_data.spend`. Used to compute ROI for alternative
+        `media_spend` data. Default uses `meridian.input_data.media_spend`.
       new_reach: Optional. Reach data with the same shape as
-        `meridian.input.data.reach`. Used to compute ROI for alternative
-        reach data. Default uses `meridian.input.data.reach`.
+        `meridian.input_data.reach`. Used to compute ROI for alternative reach
+        data. Default uses `meridian.input_data.reach`.
       new_frequency: Optional. Frequency data with the same shape as
-        `meridian.input.data.frequency`. Used to compute ROI for alternative
-        frequency data. Default uses` meridian.input.data.frequency`.
+        `meridian.input_data.frequency`. Used to compute ROI for alternative
+        frequency data. Default uses `meridian.input_data.frequency`.
       new_rf_spend: Optional. RF Spend data with the same shape as
-        `meridian.input.data.rf_spend`. Used to compute ROI for alternative
-        rf_spend data. Default uses meridian.input.data.rf_spend.
+        `meridian.input_data.rf_spend`. Used to compute ROI for alternative
+        `rf_spend` data. Default uses `meridian.input_data.rf_spend`.
       selected_geos: Optional. Contains a subset of geos to include. By default,
         all geos are included.
       selected_times: Optional. Contains a subset of times to include. By
         default, all time periods are included.
-      aggregate_geos: If `True`, the expected revenue is summed over all
-        of the regions.
+      aggregate_geos: If `True`, the expected revenue is summed over all of the
+        regions.
       aggregate_times: If `True`, the expected revenue is summed over all of
         time periods.
       by_reach: Used for a channel with reach and frequency. If `True`, returns
@@ -1228,11 +1241,12 @@ class Analyzer:
         larger `batch_size` values.
 
     Returns:
-      Tensor of mROI values with dimensions (`n_chains, n_draws, n_geos,
-      n_times, n_media_channels + n_rf_channels`). The `n_geos` and `n_times`
+      Tensor of mROI values with dimensions `(n_chains, n_draws, n_geos,
+      n_times, (n_media_channels + n_rf_channels))`. The `n_geos` and `n_times`
       dimensions are dropped if `aggregate_geos=True` or
       `aggregate_times=True`, respectively.
     """
+    self._validate_roi_functionality()
     dim_kwargs = {
         "selected_geos": selected_geos,
         "selected_times": selected_times,
@@ -1269,8 +1283,7 @@ class Analyzer:
     )
     incremental_revenue_kwargs.update(incremented_tensors)
     incremental_impact_with_multiplier = self.incremental_impact(
-        **dim_kwargs,
-        **incremental_revenue_kwargs,
+        **dim_kwargs, **incremental_revenue_kwargs
     )
     numerator = incremental_impact_with_multiplier - incremental_revenue
     roi_spend = roi_tensors.total_spend() * incremental_increase
@@ -1321,17 +1334,17 @@ class Analyzer:
       aggregate_times: Boolean. If `True`, the expected revenue is summed over
         all of the time periods.
       batch_size: Integer representing the maximum draws per chain in each
-        batch. The calculation is run in batches to avoid memory exhaustion.
-        If a memory error occurs, try reducing `batch_size`. The calculation
-        will generally be faster with larger `batch_size` values.
+        batch. The calculation is run in batches to avoid memory exhaustion. If
+        a memory error occurs, try reducing `batch_size`. The calculation will
+        generally be faster with larger `batch_size` values.
 
     Returns:
-      Tensor of ROI values with dimensions (`n_chains, n_draws, n_geos, n_times,
-      n_media_channels, n_rf_channels`). The `n_geos` and `n_times`
+      Tensor of ROI values with dimensions `(n_chains, n_draws, n_geos, n_times,
+      n_media_channels, n_rf_channels)`. The `n_geos` and `n_times`
       dimensions are dropped if `aggregate_geos=True` or
       `aggregate_times=True`, respectively.
     """
-
+    self._validate_roi_functionality()
     dim_kwargs = {
         "selected_geos": selected_geos,
         "selected_times": selected_times,
@@ -1412,8 +1425,8 @@ class Analyzer:
         generally be faster with larger `batch_size` values.
 
     Returns:
-      Tensor of CPIK values with dimensions (`n_chains, n_draws, n_geos,
-      n_times, n_media_channels, n_rf_channels`). The `n_geos` and `n_times`
+      Tensor of CPIK values with dimensions `(n_chains, n_draws, n_geos,
+      n_times, n_media_channels, n_rf_channels)`. The `n_geos` and `n_times`
       dimensions are dropped if `aggregate_geos=True` or
       `aggregate_times=True`, respectively.
     """
@@ -1467,8 +1480,9 @@ class Analyzer:
       A dataset with the expected, baseline, and actual impact metrics.
     """
     mmm = self._meridian
+    use_kpi = self._meridian.input_data.revenue_per_kpi is None
     expected_tensor = self.expected_impact(
-        aggregate_geos=False, aggregate_times=False
+        aggregate_geos=False, aggregate_times=False, use_kpi=use_kpi
     )
     baseline_tensor = self.expected_impact(
         new_media=tf.zeros_like(mmm.media) if mmm.media is not None else None,
@@ -1478,6 +1492,7 @@ class Analyzer:
         else None,
         aggregate_geos=False,
         aggregate_times=False,
+        use_kpi=use_kpi,
     )
     expected = np.stack(
         [
@@ -1495,10 +1510,10 @@ class Analyzer:
         ],
         axis=-1,
     )
-    if mmm.revenue_per_kpi is not None:
-      actual = mmm.kpi * mmm.revenue_per_kpi
-    else:
+    if use_kpi:
       actual = mmm.kpi
+    else:
+      actual = mmm.kpi * mmm.revenue_per_kpi
 
     coords = {
         constants.GEO: ([constants.GEO], mmm.input_data.geo.data),
@@ -1524,14 +1539,15 @@ class Analyzer:
     return xr.Dataset(data_vars=data_vars, coords=coords, attrs=attrs)
 
   def _compute_incremental_impact_aggregate(
-      self, use_posterior: bool, **roi_kwargs
+      self, use_posterior: bool, use_kpi: bool | None = None, **roi_kwargs
   ):
     """Aggregates the incremental impact for MediaSummary metrics."""
+    use_kpi = use_kpi or self._meridian.input_data.revenue_per_kpi is None
     expected_impact = self.expected_impact(
-        use_posterior=use_posterior, **roi_kwargs
+        use_posterior=use_posterior, use_kpi=use_kpi, **roi_kwargs
     )
     incremental_impact_m = self.incremental_impact(
-        use_posterior=use_posterior, **roi_kwargs
+        use_posterior=use_posterior, use_kpi=use_kpi, **roi_kwargs
     )
     new_media = (
         tf.zeros_like(self._meridian.media)
@@ -1553,6 +1569,7 @@ class Analyzer:
         new_media=new_media,
         new_reach=new_reach,
         new_frequency=new_frequency,
+        use_kpi=use_kpi,
         **roi_kwargs,
     )
     return tf.concat(
@@ -1593,17 +1610,18 @@ class Analyzer:
       aggregate_times: Boolean. If `True`, the expected impact is summed over
         all of the time periods.
       batch_size: Integer representing the maximum draws per chain in each
-        batch. The calculation is run in batches to avoid memory exhaustion.
-        If a memory error occurs, try reducing `batch_size`. The calculation
-        will generally be faster with larger `batch_size` values.
+        batch. The calculation is run in batches to avoid memory exhaustion. If
+        a memory error occurs, try reducing `batch_size`. The calculation will
+        generally be faster with larger `batch_size` values.
 
     Returns:
-      An `xr.Dataset` with coordinates: `channel`, `metric` (mean, `ci_high`,
+      An `xr.Dataset` with coordinates: `channel`, `metric` (`mean`, `ci_high`,
       `ci_low`), `distribution` (prior, posterior) and contains the following
       data variables: `impressions`, `pct_of_impressions`, `spend`,
       `pct_of_spend`, `CPM`, `incremental_impact`, `pct_of_contribution`, `roi`,
       `effectiveness`, `mroi`.
     """
+    use_kpi = self._meridian.input_data.revenue_per_kpi is None
     dim_kwargs = {
         "selected_geos": selected_geos,
         "selected_times": selected_times,
@@ -1655,10 +1673,10 @@ class Analyzer:
         use_posterior=True, **roi_kwargs
     )
     expected_impact_prior = self.expected_impact(
-        use_posterior=False, **roi_kwargs
+        use_posterior=False, use_kpi=use_kpi, **roi_kwargs
     )
     expected_impact_posterior = self.expected_impact(
-        use_posterior=True, **roi_kwargs
+        use_posterior=True, use_kpi=use_kpi, **roi_kwargs
     )
 
     xr_dims = (
@@ -1702,7 +1720,6 @@ class Analyzer:
         ),
         **xr_coords,
     }
-
     spend_data = self._compute_spend_data_aggregate(
         spend_with_total=spend_with_total,
         impressions_with_total=impressions_with_total,
@@ -1726,14 +1743,6 @@ class Analyzer:
         xr_coords=xr_coords_with_ci_and_distribution,
         confidence_level=confidence_level,
     )
-    roi = self._compute_roi_aggregate(
-        incremental_revenue_prior=incremental_impact_prior,
-        incremental_revenue_posterior=incremental_impact_posterior,
-        xr_dims=xr_dims_with_ci_and_distribution,
-        xr_coords=xr_coords_with_ci_and_distribution,
-        confidence_level=confidence_level,
-        spend_with_total=spend_with_total,
-    )
     effectiveness = self._compute_effectiveness_aggregate(
         incremental_impact_prior=incremental_impact_prior,
         incremental_impact_posterior=incremental_impact_posterior,
@@ -1742,29 +1751,62 @@ class Analyzer:
         xr_coords=xr_coords_with_ci_and_distribution,
         confidence_level=confidence_level,
     )
-    mroi = self._compute_marginal_roi_aggregate(
-        marginal_roi_by_reach=marginal_roi_by_reach,
-        marginal_roi_incremental_increase=marginal_roi_incremental_increase,
-        expected_revenue_prior=expected_impact_prior,
-        expected_revenue_posterior=expected_impact_posterior,
-        xr_dims=xr_dims_with_ci_and_distribution,
-        xr_coords=xr_coords_with_ci_and_distribution,
-        confidence_level=confidence_level,
-        spend_with_total=spend_with_total,
-        **roi_kwargs,
-    )
-
+    if use_kpi:
+      roi = xr.Dataset()
+      mroi = xr.Dataset()
+      cpik = self._compute_cpik_aggregate(
+          incremental_kpi_prior=self._compute_incremental_impact_aggregate(
+              use_posterior=False, use_kpi=True, **roi_kwargs
+          ),
+          incremental_kpi_posterior=self._compute_incremental_impact_aggregate(
+              use_posterior=True, use_kpi=True, **roi_kwargs
+          ),
+          spend_with_total=spend_with_total,
+          xr_dims=xr_dims_with_ci_and_distribution,
+          xr_coords=xr_coords_with_ci_and_distribution,
+          confidence_level=confidence_level,
+      )
+    else:
+      cpik = xr.Dataset()
+      roi = self._compute_roi_aggregate(
+          incremental_revenue_prior=incremental_impact_prior,
+          incremental_revenue_posterior=incremental_impact_posterior,
+          xr_dims=xr_dims_with_ci_and_distribution,
+          xr_coords=xr_coords_with_ci_and_distribution,
+          confidence_level=confidence_level,
+          spend_with_total=spend_with_total,
+      )
+      mroi = self._compute_marginal_roi_aggregate(
+          marginal_roi_by_reach=marginal_roi_by_reach,
+          marginal_roi_incremental_increase=marginal_roi_incremental_increase,
+          expected_revenue_prior=expected_impact_prior,
+          expected_revenue_posterior=expected_impact_posterior,
+          xr_dims=xr_dims_with_ci_and_distribution,
+          xr_coords=xr_coords_with_ci_and_distribution,
+          confidence_level=confidence_level,
+          spend_with_total=spend_with_total,
+          **roi_kwargs,
+      )
     if not aggregate_times:
       # Impact metrics should not be normalized by weekly media metrics, which
-      # do not have a clear interpretation due to lagged effects. Therefore, the
-      # NA values are return for certain metrics if aggregate_times=False.
-      warnings.warn(
-          "ROI, mROI, and Effectiveness are not reported because "
-          "they do not have a clear interpretation by time period."
-      )
-      roi *= np.nan
-      mroi *= np.nan
+      # do not have a clear interpretation due to lagged effects. Therefore,
+      # the NA values are returned for certain metrics if
+      # aggregate_times=False.
+      if use_kpi:
+        warning = (
+            "Effectiveness and CPIK are not reported because they do not have a"
+            " clear interpretation by time period."
+        )
+        cpik *= np.nan
+      else:
+        warning = (
+            "ROI, mROI, and Effectiveness are not reported because they do not"
+            " have a clear interpretation by time period."
+        )
+        roi *= np.nan
+        mroi *= np.nan
       effectiveness *= np.nan
+      warnings.warn(warning)
     return xr.merge([
         spend_data,
         incremental_impact,
@@ -1772,6 +1814,7 @@ class Analyzer:
         roi,
         effectiveness,
         mroi,
+        cpik,
     ])
 
   def optimal_freq(
@@ -1782,18 +1825,22 @@ class Analyzer:
       selected_geos: Sequence[str | int] | None = None,
       selected_times: Sequence[str | int] | None = None,
   ) -> xr.Dataset:
-    """Calculates the optimal frequency that maximizes posterior mean ROI.
+    """Calculates the optimal frequency that maximizes posterior mean ROI/CPIK.
+
+    In the case that `revenue_per_kpi` is not known and ROI is not available,
+    the optimal frequency is calculated using cost per incremental KPI instead.
 
     For this optimization, frequency is restricted to be constant across all
     geographic regions and time periods. Reach is calculated for each
     geographic area and time period such that the number of impressions
     remains unchanged as frequency varies. Merdian solves for the frequency at
-    which posterior mean ROI is maximized.
+    which posterior mean ROI or CPIK is maximized.
 
     Args:
-      freq_grid: List of frequency values. The ROI of each channel is calculated
-        for each frequency value in the list. By default, the list includes
-        numbers from 1.0 to the maximum frequency in increments of 0.1.
+      freq_grid: List of frequency values. The ROI/CPIK of each channel is
+        calculated for each frequency value in the list. By default, the list
+        includes numbers from `1.0` to the maximum frequency in increments of
+        `0.1`.
       confidence_level: Confidence level for prior and posterior credible
         intervals, represented as a value between zero and one.
       use_posterior: Boolean. If `True`, posterior optimal frequencies are
@@ -1804,10 +1851,11 @@ class Analyzer:
         default, all time periods are included.
 
     Returns:
-      XArray Dataset containing two variables: `optimal_frequency` and
-        `roi_by_frequency`. `optimal_frequency` is the frequency that optimizes
-        the posterior mean of ROI. `roi_by_frequency` is the ROI for each
-        frequency value.
+      An xarray Dataset containing two variables: `optimal_frequency` and
+        `roi_by_frequency` or `cpik_by_frequency`. `optimal_frequency` is the
+        frequency that optimizes the posterior mean of ROI or CPIK.
+        `roi_by_frequency` is the ROI for each frequency value while
+        `cpik_by_frequency` is the CPIK fro each frequency value.
 
     Raises:
       NotFittedModelError: If `sample_posterior()` (for `use_posterior=True`)
@@ -1830,11 +1878,12 @@ class Analyzer:
         "aggregate_geos": True,
         "aggregate_times": True,
     }
+    use_roi = self._meridian.input_data.revenue_per_kpi is not None
 
     max_freq = np.max(np.array(self._meridian.frequency))
     if freq_grid is None:
       freq_grid = np.arange(1, max_freq, 0.1)
-    roi = np.zeros(
+    metric = np.zeros(
         (len(freq_grid), self._meridian.n_rf_channels, 3)
     )  #  Last argument is 3 for the mean, lower and upper confidence intervals.
 
@@ -1843,27 +1892,44 @@ class Analyzer:
       new_reach = (
           self._meridian.frequency * self._meridian.reach / new_frequency
       )
-      roi_temp = self.roi(
-          new_reach=new_reach,
-          new_frequency=new_frequency,
-          use_posterior=use_posterior,
-          **dim_kwargs,
-      )[..., -self._meridian.n_rf_channels :]
-      roi[i, :, 0] = np.mean(roi_temp, (0, 1))
-      roi[i, :, 1] = np.quantile(roi_temp, (1 - confidence_level) / 2, (0, 1))
-      roi[i, :, 2] = np.quantile(roi_temp, (1 + confidence_level) / 2, (0, 1))
+      if use_roi:
+        metric_temp = self.roi(
+            new_reach=new_reach,
+            new_frequency=new_frequency,
+            use_posterior=use_posterior,
+            **dim_kwargs,
+        )[..., -self._meridian.n_rf_channels :]
+      else:
+        metric_temp = self.cpik(
+            new_reach=new_reach,
+            new_frequency=new_frequency,
+            use_posterior=use_posterior,
+            **dim_kwargs,
+        )[..., -self._meridian.n_rf_channels :]
+      metric[i, :, 0] = np.mean(metric_temp, (0, 1))
+      metric[i, :, 1] = np.quantile(
+          metric_temp, (1 - confidence_level) / 2, (0, 1)
+      )
+      metric[i, :, 2] = np.quantile(
+          metric_temp, (1 + confidence_level) / 2, (0, 1)
+      )
 
-    optimal_freq_idx = np.argmax(roi[:, :, 0], axis=0)
+    optimal_freq_idx = (
+        np.nanargmax(metric[:, :, 0], axis=0)
+        if use_roi
+        else np.nanargmin(metric[:, :, 0], axis=0)
+    )
     rf_channel_values = (
         self._meridian.input_data.rf_channel.values
         if self._meridian.input_data.rf_channel is not None
         else []
     )
+    metric_name = constants.ROI if use_roi else constants.CPIK
     return xr.Dataset(
         data_vars={
-            constants.ROI: (
+            metric_name: (
                 [constants.FREQUENCY, constants.RF_CHANNEL, constants.METRIC],
-                roi,
+                metric,
             ),
             constants.OPTIMAL_FREQUENCY: (
                 [constants.RF_CHANNEL],
@@ -1918,12 +1984,13 @@ class Analyzer:
         larger `batch_size` values.
 
     Returns:
-      An XArray Dataset containing the computed `R_Squared`, `MAPE`, and `wMAPE`
+      An xarray Dataset containing the computed `R_Squared`, `MAPE`, and `wMAPE`
       values, with coordinates `metric`, `geo_granularity`, `evaluation_set`,
       and accompanying data variable `value`. If `holdout_id` exists, the data
-      is split into `Train`, `Test`, and `All Data` subsections, and the three
-      metrics are computed for each.
+      is split into `'Train'`, `'Test'`, and `'All Data'` subsections, and the
+      three metrics are computed for each.
     """
+    use_kpi = self._meridian.input_data.revenue_per_kpi is None
     if self._meridian.is_national:
       _warn_if_geo_arg_in_kwargs(
           selected_geos=selected_geos,
@@ -1955,7 +2022,10 @@ class Analyzer:
         **dims_kwargs,
     ).numpy()
     expected = np.mean(
-        self.expected_impact(batch_size=batch_size, **dims_kwargs), (0, 1)
+        self.expected_impact(
+            batch_size=batch_size, use_kpi=use_kpi, **dims_kwargs
+        ),
+        (0, 1),
     )
     rsquared, mape, wmape = self._predictive_accuracy_helper(actual, expected)
     rsquared_national, mape_national, wmape_national = (
@@ -2011,11 +2081,9 @@ class Analyzer:
       )
       xr_data = {constants.VALUE: (xr_dims, stacked_total)}
       dataset = xr.Dataset(data_vars=xr_data, coords=xr_coords)
-    if self._meridian.is_national and any(
-        dataset[constants.GEO_GRANULARITY].isin(constants.GEO)
-    ):
+    if self._meridian.is_national:
       # Remove the geo-level coordinate.
-      dataset = dataset.sel(geo_granularity=constants.GEO)
+      dataset = dataset.sel(geo_granularity=[constants.NATIONAL])
     return dataset
 
   def _predictive_accuracy_helper(
@@ -2023,20 +2091,20 @@ class Analyzer:
       actual_eval_set: np.ndarray,
       expected_eval_set: np.ndarray,
   ) -> list[np.floating]:
-    """Calculates the predictive accuracy metrics when holdout_id exists.
+    """Calculates the predictive accuracy metrics when `holdout_id` exists.
 
     Args:
-      actual_eval_set: Array with filtered and/or aggregated geo and time
-        dimensions for the meridian.kpi * meridian.revenue_per_kpi calculation
-        for either the `Train`, `Test`, or `All Data` evaluation sets.
-      expected_eval_set: Array of expected impact with dimensions `(n_chains,
-        n_draws, n_geos, n_times)` for either the `Train`, `Test`, or `All Data`
-        evaluation sets.
+      actual_eval_set: An array with filtered and/or aggregated geo and time
+        dimensions for the `meridian.kpi * meridian.revenue_per_kpi` calculation
+        for either the `'Train'`, `'Test'`, or `'All Data'` evaluation sets.
+      expected_eval_set: An array of expected impact with dimensions `(n_chains,
+        n_draws, n_geos, n_times)` for either the `'Train'`, `'Test'`, or
+        `'All Data'` evaluation sets.
 
     Returns:
       A list containing the `geo` or `national` level data for the `R_Squared`,
-      `MAPE`, and `wMAPE` metrics computed for either a `Train`, `Test`, or
-      `All Data` evaluation set.
+      `MAPE`, and `wMAPE` metrics computed for either a `'Train'`, `'Test'`, or
+      `'All Data'` evaluation set.
     """
     rsquared = _calc_rsquared(expected_eval_set, actual_eval_set)
     mape = _calc_mape(expected_eval_set, actual_eval_set)
@@ -2047,7 +2115,7 @@ class Analyzer:
     """Computes the R-hat values for each parameter in the model.
 
     Returns:
-      Dictionary of r-hat values where each parameter is a key and values are
+      A dictionary of r-hat values where each parameter is a key and values are
       r-hats corresponding to the parameter.
 
     Raises:
@@ -2094,23 +2162,24 @@ class Analyzer:
 
     Returns:
       A DataFrame with the following columns:
-        * n_params: The number of respective parameters in the model.
-        * avg_rhat: The average R-hat value for the respective parameter.
-        * n_params: The number of respective parameters in the model.
-        * avg_rhat: The average R-hat value for the respective parameter.
-        * max_rhat: The maximum R-hat value for the respective parameter.
-        * percent_bad_rhat: The percentage of R-hat values for the respective
+
+      *   `n_params`: The number of respective parameters in the model.
+      *   `avg_rhat`: The average R-hat value for the respective parameter.
+      *   `n_params`: The number of respective parameters in the model.
+      *   `avg_rhat`: The average R-hat value for the respective parameter.
+      *   `max_rhat`: The maximum R-hat value for the respective parameter.
+      *   `percent_bad_rhat`: The percentage of R-hat values for the respective
           parameter that are greater than `bad_r_hat_threshold`.
-        * row_idx_bad_rhat: The row indices of the R-hat values that are greater
-          than `bad_r_hat_threshold`.
-        * col_idx_bad_rhat: The column indices of the R-hat values that are
+      *   `row_idx_bad_rhat`: The row indices of the R-hat values that are
+          greater than `bad_r_hat_threshold`.
+      *   `col_idx_bad_rhat`: The column indices of the R-hat values that are
           greater than `bad_r_hat_threshold`.
 
     Raises:
       NotFittedModelError: If `self.sample_posterior()` is not called before
         calling this method.
       ValueError: If the number of dimensions of the R-hat array for a parameter
-        is not 1 or 2.
+        is not `1` or `2`.
     """
     r_hat = self._get_r_hat()
 
@@ -2142,7 +2211,6 @@ class Analyzer:
               constants.COL_IDX_BAD_RHAT: col_idx,
           })
       )
-
     return pd.DataFrame(r_hat_summary)
 
   def response_curves(
@@ -2178,19 +2246,20 @@ class Analyzer:
         include. By default, all time periods are included. Time dimension
         strings and integers must align with the `Meridian.n_times`.
       by_reach: Boolean. For channels with reach and frequency. If `True`, plots
-        the response curve by reach. If `False`, plots the response curve
-        by frequency.
+        the response curve by reach. If `False`, plots the response curve by
+        frequency.
       use_optimal_frequency: If `True`, uses the optimal frequency to plot the
         response curves. Defaults to `False`.
       batch_size: Integer representing the maximum draws per chain in each
-        batch. The calculation is run in batches to avoid memory exhaustion.
-        If a memory error occurs, try reducing `batch_size`. The calculation
-        will generally be faster with larger `batch_size` values.
+        batch. The calculation is run in batches to avoid memory exhaustion. If
+        a memory error occurs, try reducing `batch_size`. The calculation will
+        generally be faster with larger `batch_size` values.
 
     Returns:
-        An XArray Dataset containing the data needed to visualize
-        response curves.
+        An xarray Dataset containing the data needed to visualize response
+        curves.
     """
+    use_kpi = self._meridian.input_data.revenue_per_kpi is None
     if self._meridian.is_national:
       _warn_if_geo_arg_in_kwargs(
           selected_geos=selected_geos,
@@ -2237,8 +2306,8 @@ class Analyzer:
       incimpact_temp = self.incremental_impact(
           use_posterior=use_posterior,
           inverse_transform_impact=True,
-          use_kpi=False,
           batch_size=batch_size,
+          use_kpi=use_kpi,
           **tensor_kwargs,
           **dim_kwargs,
       )
@@ -2264,7 +2333,6 @@ class Analyzer:
           **dim_kwargs,
       )
     spend_einsum = tf.einsum("k,m->km", np.array(spend_multipliers), spend)
-    roi = incremental_impact / spend_einsum[:, :, None]
     xr_coords = {
         constants.CHANNEL: (
             [constants.CHANNEL],
@@ -2288,10 +2356,6 @@ class Analyzer:
             [constants.SPEND_MULTIPLIER, constants.CHANNEL, constants.METRIC],
             incremental_impact,
         ),
-        constants.ROI: (
-            [constants.SPEND_MULTIPLIER, constants.CHANNEL, constants.METRIC],
-            roi,
-        ),
     }
     attrs = {constants.CONFIDENCE_LEVEL: confidence_level}
     return xr.Dataset(data_vars=xr_data_vars, coords=xr_coords, attrs=attrs)
@@ -2305,7 +2369,7 @@ class Analyzer:
 
     Returns:
       Pandas DataFrame containing the channel, `time_units`, distribution,
-      `ci_hi`, `ci_lo`, and mean for the Adstock function.
+      `ci_hi`, `ci_lo`, and `mean` for the Adstock function.
     """
     if (
         constants.PRIOR not in self._meridian.inference_data.groups()
@@ -2406,16 +2470,16 @@ class Analyzer:
     Returns:
       A DataFrame with data needed to plot the Hill curves, with columns:
 
-      * channel: `media` or `rf` channel name.
-      * media_units: Media (for `media` channels) or average frequency (for
-      `rf` channels) units.
-      * distribution: Indication of `posterior` or `prior` draw.
-      * ci_hi: Upper bound of the credible interval of the value of the Hill
-      function.
-      * ci_lo: Lower bound of the credible interval of the value of the Hill
-      function.
-      * mean: Point-wise mean of the value of the Hill function per draw.
-      * channel_type: Indication of a `media` or `rf` channel.
+      *   `channel`: `media` or `rf` channel name.
+      *   `media_units`: Media (for `media` channels) or average frequency (for
+          `rf` channels) units.
+      *   `distribution`: Indication of `posterior` or `prior` draw.
+      *   `ci_hi`: Upper bound of the credible interval of the value of the Hill
+          function.
+      *   `ci_lo`: Lower bound of the credible interval of the value of the Hill
+          function.
+      *   `mean`: Point-wise mean of the value of the Hill function per draw.
+      *   channel_type: Indication of a `media` or `rf` channel.
     """
     if (
         channel_type == constants.MEDIA
@@ -2525,7 +2589,9 @@ class Analyzer:
     x_range_list = x_range_full_shape.flatten("F").tolist()
     # Doubles each value in the list to account for alternating prior
     # and posterior.
-    x_range_doubled = list(chain.from_iterable(zip(x_range_list, x_range_list)))
+    x_range_doubled = list(
+        itertools.chain.from_iterable(zip(x_range_list, x_range_list))
+    )
     media_units_arr.extend(x_range_doubled)
 
     df[constants.CHANNEL_TYPE] = channel_type
@@ -2541,16 +2607,17 @@ class Analyzer:
 
     Returns:
       Pandas DataFrame with columns:
-      * channel: `media` or `rf` channel name.
-      * channel_type: `media` or `rf` channel type.
-      * scaled_count_histogram: Scaled count of media units or average
-      frequencies within the bin.
-      * count_histogram: True count value of media units or average
-      frequencies within the bin.
-      * start_interval_histogram: Media unit or average frequency starting point
-      for a histogram bin.
-      * end_interval_histogram: Media unit or average frequency ending point for
-      a histogram bin.
+
+      *   `channel`: `media` or `rf` channel name.
+      *   `channel_type`: `media` or `rf` channel type.
+      *   `scaled_count_histogram`: Scaled count of media units or average
+          frequencies within the bin.
+      *   `count_histogram`: True count value of media units or average
+          frequencies within the bin.
+      *   `start_interval_histogram`: Media unit or average frequency starting
+          point for a histogram bin.
+      *   `end_interval_histogram`: Media unit or average frequency ending point
+          for a histogram bin.
 
       This DataFrame will be used to plot the histograms showing the relative
       distribution of media units per capita for media channels or average
@@ -2633,31 +2700,32 @@ class Analyzer:
 
     Args:
       confidence_level: Confidence level for prior and posterior credible
-        intervals, represented as a value between zero and one.
-        Default is `0.9`.
+        intervals, represented as a value between zero and one. Default is
+        `0.9`.
       n_bins: Number of equal-width bins to include in the histogram for the
         plotting. Default is `25`.
 
     Returns:
       Hill Curves pd.DataFrame with columns:
-      * channel: `media` or `rf` channel name.
-      * media_units: Media (for `media` channels) or average frequency (for
-      `rf` channels) units.
-      * distribution: Indication of `posterior` or `prior` draw.
-      * ci_hi: Upper bound of the credible interval of the value of the Hill
-      function.
-      * ci_lo: Lower bound of the credible interval of the value of the Hill
-      function.
-      * mean: Point-wise mean of the value of the Hill function per draw.
-      * channel_type: Indication of a `media` or `rf` channel.
-      * scaled_count_histogram: Scaled count of media units or average
-      frequencies within the bin.
-      * count_histogram: True count value of media units or average
-      frequencies within the bin.
-      * start_interval_histogram: Media unit or average frequency starting point
-      for a histogram bin.
-      * end_interval_histogram: Media unit or average frequency ending point for
-      a histogram bin.
+
+      *   `channel`: `media` or `rf` channel name.
+      *   `media_units`: Media (for `media` channels) or average frequency (for
+          `rf` channels) units.
+      *   `distribution`: Indication of `posterior` or `prior` draw.
+      *   `ci_hi`: Upper bound of the credible interval of the value of the Hill
+          function.
+      *   `ci_lo`: Lower bound of the credible interval of the value of the Hill
+          function.
+      *   `mean`: Point-wise mean of the value of the Hill function per draw.
+      *   `channel_type`: Indication of a `media` or `rf` channel.
+      *   `scaled_count_histogram`: Scaled count of media units or average
+          frequencies within the bin.
+      *   `count_histogram`: True count value of media units or average
+          frequencies within the bin.
+      *   `start_interval_histogram`: Media unit or average frequency starting
+          point for a histogram bin.
+      *   `end_interval_histogram`: Media unit or average frequency ending point
+          for a histogram bin.
     """
     if (
         constants.PRIOR not in self._meridian.inference_data.groups()
@@ -2715,6 +2783,7 @@ class Analyzer:
       spend_with_total: tf.Tensor,
       **roi_kwargs,
   ) -> xr.Dataset:
+    self._validate_roi_functionality()
     mroi_prior = self.marginal_roi(
         use_posterior=False,
         by_reach=marginal_roi_by_reach,
@@ -2738,6 +2807,7 @@ class Analyzer:
     mroi_prior_total = (
         self.expected_impact(
             use_posterior=False,
+            use_kpi=False,
             **incremented_tensors,
             **roi_kwargs,
         )
@@ -2746,6 +2816,7 @@ class Analyzer:
     mroi_posterior_total = (
         self.expected_impact(
             use_posterior=True,
+            use_kpi=False,
             **incremented_tensors,
             **roi_kwargs,
         )
@@ -2776,12 +2847,13 @@ class Analyzer:
     """Computes the MediaSummary metrics involving the input data.
 
     Returns:
-      A xr.Dataset consisting of the following arrays:
-      * impressions
-      * pct_of_impressions
-      * spend
-      * pct_of_spend
-      * CPM (spend for every 1,000 impressions)
+      An xarray Dataset consisting of the following arrays:
+
+      * `impressions`
+      * `pct_of_impressions`
+      * `spend`
+      * `pct_of_spend`
+      * `cpm` (spend for every 1,000 impressions)
     """
     pct_of_impressions = (
         impressions_with_total / impressions_with_total[..., -1:] * 100
@@ -2820,6 +2892,24 @@ class Analyzer:
         confidence_level=confidence_level,
     )
 
+  def _compute_cpik_aggregate(
+      self,
+      incremental_kpi_prior: tf.Tensor,
+      incremental_kpi_posterior: tf.Tensor,
+      spend_with_total: tf.Tensor,
+      xr_dims: Sequence[str],
+      xr_coords: Mapping[str, tuple[Sequence[str], Sequence[str]]],
+      confidence_level: float,
+  ) -> xr.Dataset:
+    return _mean_and_ci(
+        prior=spend_with_total / incremental_kpi_prior,
+        posterior=spend_with_total / incremental_kpi_posterior,
+        metric_name=constants.CPIK,
+        xr_dims=xr_dims,
+        xr_coords=xr_coords,
+        confidence_level=confidence_level,
+    )
+
   def _compute_pct_of_contribution(
       self,
       incremental_impact_prior: tf.Tensor,
@@ -2830,7 +2920,7 @@ class Analyzer:
       xr_coords: Mapping[str, tuple[Sequence[str], Sequence[str]]],
       confidence_level: float,
   ) -> xr.Dataset:
-    """Computes the parts of MediaSummary related to mean expected impact."""
+    """Computes the parts of `MediaSummary` related to mean expected impact."""
     mean_expected_impact_prior = tf.reduce_mean(expected_impact_prior, (0, 1))
     mean_expected_impact_posterior = tf.reduce_mean(
         expected_impact_posterior, (0, 1)

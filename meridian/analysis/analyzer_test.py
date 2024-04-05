@@ -16,6 +16,7 @@ from collections.abc import Sequence
 import os
 from unittest import mock
 import warnings
+
 from absl.testing import absltest
 from absl.testing import parameterized
 import arviz as az
@@ -24,9 +25,11 @@ from meridian.analysis import analyzer
 from meridian.analysis import test_utils
 from meridian.data import test_utils as data_test_utils
 from meridian.model import model
+from meridian.model import prior_distribution
 from meridian.model import spec
 import numpy as np
 import tensorflow as tf
+import tensorflow_probability as tfp
 import xarray as xr
 
 
@@ -100,7 +103,7 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
   @classmethod
   def setUpClass(cls):
     super(AnalyzerTest, cls).setUpClass()
-
+    # Input data resulting in revenue computation.
     cls.input_data_media_and_rf = (
         data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
             n_geos=_N_GEOS,
@@ -116,16 +119,18 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
     cls.meridian_media_and_rf = model.Meridian(
         input_data=cls.input_data_media_and_rf, model_spec=model_spec
     )
-
     cls.analyzer_media_and_rf = analyzer.Analyzer(cls.meridian_media_and_rf)
 
     cls.inference_data_media_and_rf = _build_inference_data(
         _TEST_SAMPLE_PRIOR_MEDIA_AND_RF_PATH,
         _TEST_SAMPLE_POSTERIOR_MEDIA_AND_RF_PATH,
     )
-
-    model.Meridian.inference_data = mock.PropertyMock(
-        return_value=cls.inference_data_media_and_rf
+    cls.enter_context(
+        mock.patch.object(
+            model.Meridian,
+            "inference_data",
+            new=property(lambda unused_self: cls.inference_data_media_and_rf),
+        )
     )
 
   def test_expected_impact_wrong_controls_raises_exception(self):
@@ -779,11 +784,11 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
     predictive_accuracy_dataset = (
         self.analyzer_media_and_rf.predictive_accuracy()
     )
-    self.assertAllEqual(
+    self.assertListEqual(
         list(predictive_accuracy_dataset[constants.METRIC].values),
         [constants.R_SQUARED, constants.MAPE, constants.WMAPE],
     )
-    self.assertAllEqual(
+    self.assertListEqual(
         list(predictive_accuracy_dataset[constants.GEO_GRANULARITY].values),
         [constants.GEO, constants.NATIONAL],
     )
@@ -792,9 +797,21 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
         .to_dataframe()
         .reset_index()
     )
-    self.assertAllEqual(
-        df.columns,
+    self.assertListEqual(
+        list(df.columns),
         [constants.METRIC, constants.GEO_GRANULARITY, constants.VALUE],
+    )
+
+  @mock.patch.object(
+      model.Meridian, "is_national", new=property(lambda unused_self: True)
+  )
+  def test_predictive_accuracy_national(self):
+    predictive_accuracy_dataset = (
+        self.analyzer_media_and_rf.predictive_accuracy()
+    )
+    self.assertListEqual(
+        list(predictive_accuracy_dataset[constants.GEO_GRANULARITY].values),
+        [constants.NATIONAL],
     )
 
   @parameterized.product(
@@ -865,7 +882,7 @@ class AnalyzerTest(tf.test.TestCase, parameterized.TestCase):
         .to_dataframe()
         .reset_index()
     )
-    self.assertAllEqual(
+    self.assertListEqual(
         list(df.columns),
         [
             constants.METRIC,
@@ -1104,8 +1121,12 @@ class AnalyzerMediaOnlyTest(tf.test.TestCase, parameterized.TestCase):
         _TEST_SAMPLE_POSTERIOR_MEDIA_ONLY_PATH,
     )
 
-    model.Meridian.inference_data = mock.PropertyMock(
-        return_value=cls.inference_data_media_only
+    cls.enter_context(
+        mock.patch.object(
+            model.Meridian,
+            "inference_data",
+            new=property(lambda unused_self: cls.inference_data_media_only),
+        )
     )
 
   def test_filter_and_aggregate_geos_and_times_incorrect_tensor_shape(self):
@@ -1423,7 +1444,7 @@ class AnalyzerMediaOnlyTest(tf.test.TestCase, parameterized.TestCase):
     )
     self.assertEqual(
         list(response_curve_data.data_vars.keys()),
-        [constants.SPEND, constants.INCREMENTAL_IMPACT, constants.ROI],
+        [constants.SPEND, constants.INCREMENTAL_IMPACT],
     )
     response_curves_df = (
         response_curve_data[[constants.SPEND, constants.INCREMENTAL_IMPACT]]
@@ -1447,45 +1468,6 @@ class AnalyzerMediaOnlyTest(tf.test.TestCase, parameterized.TestCase):
     for i, mean in enumerate(response_curves_df[constants.MEAN]):
       self.assertGreaterEqual(mean, response_curves_df[constants.CI_LO][i])
       self.assertLessEqual(mean, response_curves_df[constants.CI_HI][i])
-
-  def test_response_curves_check_roi_change(
-      self,
-  ):
-    spend_multipliers = list(np.arange(0, 2.2, 0.2))
-    incimpact = np.zeros((
-        len(spend_multipliers),
-        len(self.analyzer_media_only._meridian.input_data.get_all_channels()),
-        3,  # Last dimension = 3 for the mean, ci_lo and ci_hi.
-    ))
-
-    if (
-        self.analyzer_media_only._meridian.n_media_channels > 0
-        and self.analyzer_media_only._meridian.n_rf_channels > 0
-    ):
-      spend = tf.concat(
-          [
-              self.analyzer_media_only._meridian.media_spend,
-              self.analyzer_media_only._meridian.rf_spend,
-          ],
-          axis=-1,
-      )
-    elif self.analyzer_media_only._meridian.n_media_channels > 0:
-      spend = self.analyzer_media_only._meridian.media_spend
-    else:
-      spend = self.analyzer_media_only._meridian.rf_spend
-    if tf.rank(spend).numpy() == 3:
-      spend = self.analyzer_media_only.filter_and_aggregate_geos_and_times(
-          tensor=spend,
-          selected_geos=None,
-          selected_times=None,
-          aggregate_geos=True,
-          aggregate_times=True,
-      )
-    spend_einsum = tf.einsum("k,m->km", np.array(spend_multipliers), spend)
-    response_curve_roi = self.analyzer_media_only.response_curves().roi
-    self.assertNotAllEqual(
-        incimpact / spend_einsum[:, :, None], response_curve_roi
-    )
 
   @parameterized.product(
       aggregate_geos=[False, True],
@@ -1569,8 +1551,12 @@ class AnalyzerRFOnlyTest(tf.test.TestCase, parameterized.TestCase):
         _TEST_SAMPLE_POSTERIOR_RF_ONLY_PATH,
     )
 
-    model.Meridian.inference_data = mock.PropertyMock(
-        return_value=cls.inference_data_rf_only
+    cls.enter_context(
+        mock.patch.object(
+            model.Meridian,
+            "inference_data",
+            new=property(lambda unused_self: cls.inference_data_rf_only),
+        )
     )
 
   @parameterized.product(
@@ -1989,6 +1975,167 @@ class AnalyzerRFOnlyTest(tf.test.TestCase, parameterized.TestCase):
     self.assertEqual(media_summary.roi.shape, expected_shape)
     self.assertEqual(media_summary.effectiveness.shape, expected_shape)
     self.assertEqual(media_summary.mroi.shape, expected_shape)
+
+
+class AnalyzerKpiTest(tf.test.TestCase, parameterized.TestCase):
+
+  @classmethod
+  def setUpClass(cls):
+    super(AnalyzerKpiTest, cls).setUpClass()
+
+    input_data = (
+        data_test_utils.sample_input_data_non_revenue_no_revenue_per_kpi(
+            n_geos=_N_GEOS,
+            n_times=_N_TIMES,
+            n_media_times=_N_MEDIA_TIMES,
+            n_controls=_N_CONTROLS,
+            n_media_channels=_N_MEDIA_CHANNELS,
+            n_rf_channels=_N_RF_CHANNELS,
+            seed=0,
+        )
+    )
+    cpik_prior = tfp.distributions.LogNormal(0.5, 0.5)
+    roi_prior = tfp.distributions.TransformedDistribution(
+        cpik_prior, tfp.bijectors.Reciprocal()
+    )
+    custom_prior = prior_distribution.PriorDistribution(
+        roi_m=roi_prior, roi_rf=roi_prior
+    )
+    model_spec = spec.ModelSpec(prior=custom_prior)
+    cls.meridian_kpi = model.Meridian(
+        input_data=input_data, model_spec=model_spec
+    )
+    cls.analyzer_kpi = analyzer.Analyzer(cls.meridian_kpi)
+    inference_data = _build_inference_data(
+        _TEST_SAMPLE_PRIOR_MEDIA_AND_RF_PATH,
+        _TEST_SAMPLE_PRIOR_MEDIA_AND_RF_PATH,
+    )
+    cls.enter_context(
+        mock.patch.object(
+            model.Meridian,
+            "inference_data",
+            new=property(lambda unused_self: inference_data),
+        )
+    )
+
+  def test_use_kpi_expected_vs_actual_data_expected_impact_correct_usage(self):
+    mock_expected_impact = self.enter_context(
+        mock.patch.object(
+            self.analyzer_kpi,
+            "expected_impact",
+            return_value=tf.ones((
+                _N_CHAINS,
+                _N_DRAWS,
+                _N_GEOS,
+                _N_TIMES,
+            )),
+        )
+    )
+    self.analyzer_kpi.expected_vs_actual_data()
+    _, mock_kwargs = mock_expected_impact.call_args
+    self.assertEqual(mock_kwargs["use_kpi"], True)
+
+  def test_use_kpi_no_revenue_per_kpi_correct_usage_expected_vs_actual(self):
+    expected_vs_actual = self.analyzer_kpi.expected_vs_actual_data(
+        confidence_level=0.9
+    )
+    self.assertAllClose(
+        list(expected_vs_actual.data_vars[constants.ACTUAL].values[:5]),
+        list(self.meridian_kpi.kpi[:5]),
+        atol=1e-3,
+    )
+
+  def test_use_kpi_no_revenue_per_kpi_correct_usage_media_summary_metrics(self):
+    media_summary = self.analyzer_kpi.media_summary_metrics(
+        confidence_level=0.9,
+        marginal_roi_by_reach=False,
+        aggregate_geos=True,
+        aggregate_times=True,
+        selected_geos=None,
+        selected_times=None,
+    )
+    self.assertEqual(
+        list(media_summary.data_vars.keys()),
+        [
+            constants.IMPRESSIONS,
+            constants.PCT_OF_IMPRESSIONS,
+            constants.SPEND,
+            constants.PCT_OF_SPEND,
+            constants.CPM,
+            constants.INCREMENTAL_IMPACT,
+            constants.PCT_OF_CONTRIBUTION,
+            constants.EFFECTIVENESS,
+            constants.CPIK,
+        ],
+    )
+    self.assertAllClose(
+        media_summary.cpik, test_utils.SAMPLE_CPIK, atol=1e-3, rtol=1e-3
+    )
+
+  def test_media_summary_metrics_no_time_period_warning(self):
+    with warnings.catch_warnings(record=True) as w:
+      self.analyzer_kpi.media_summary_metrics(
+          confidence_level=0.8,
+          marginal_roi_by_reach=False,
+          aggregate_geos=True,
+          aggregate_times=False,
+          selected_geos=None,
+          selected_times=None,
+      )
+      self.assertLen(w, 1)
+      self.assertTrue(issubclass(w[0].category, UserWarning))
+      self.assertIn(
+          "Effectiveness and CPIK are not reported because they do not have a"
+          " clear interpretation by time period.",
+          str(w[0].message),
+      )
+
+  def test_use_kpi_no_revenue_per_kpi_correct_usage_response_curves(self):
+    mock_incremental_impact = self.enter_context(
+        mock.patch.object(
+            self.analyzer_kpi,
+            "incremental_impact",
+            return_value=tf.ones((
+                _N_CHAINS,
+                _N_DRAWS,
+                _N_MEDIA_CHANNELS + _N_RF_CHANNELS,
+            )),
+        )
+    )
+    self.analyzer_kpi.response_curves()
+    _, mock_kwargs = mock_incremental_impact.call_args
+    self.assertEqual(mock_kwargs["use_kpi"], True)
+
+  def test_use_kpi_no_revenue_per_kpi_correct_usage_expected_impact(self):
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "`use_kpi` must be True when `revenue_per_kpi` is not defined.",
+    ):
+      self.analyzer_kpi.expected_impact()
+
+  def test_optimal_frequency_uses_cpik_if_no_revenue_per_kpi(self):
+    with mock.patch.object(
+        self.analyzer_kpi, "cpik", autospec=True
+    ) as mock_cpik:
+      mock_cpik.return_value = tf.ones(
+          [_N_DRAWS, _N_DRAWS, _N_MEDIA_CHANNELS + _N_RF_CHANNELS]
+      )
+      ds = self.analyzer_kpi.optimal_freq()
+      mock_cpik.assert_called()
+      self.assertIn(constants.CPIK, list(ds.data_vars.keys()))
+
+  def test_optimal_frequency_min_cpik_at_opt_freq(self):
+    ds = self.analyzer_kpi.optimal_freq()
+    df = ds.to_dataframe()
+    cpik_at_opt_freq = list(
+        df.query(
+            'frequency == optimal_frequency & metric == "mean"'
+        ).cpik.values
+    )
+    min_mean_cpik = list(ds.cpik[:, :, 0].min(axis=0).values)
+    cpik_at_opt_freq.sort()
+    min_mean_cpik.sort()
+    self.assertListEqual(cpik_at_opt_freq, min_mean_cpik)
 
 
 class AnalyzerNotFittedTest(absltest.TestCase):

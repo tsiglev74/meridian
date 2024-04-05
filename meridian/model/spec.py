@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Class definition for storing model specification parameters for Calibra."""
+"""Defines model specification parameters for Meridian."""
 
 import dataclasses
 
@@ -21,17 +21,20 @@ from meridian.model import prior_distribution
 import numpy as np
 
 
+__all__ = [
+    "ModelSpec",
+]
+
+
 def _validate_roi_calibration_period(
     array: np.ndarray | None,
     array_name: str,
     media_channel_dim_name: str,
 ):
-  if array is not None and (len(array.shape) != 2) and (len(array.shape) != 3):
+  if array is not None and (len(array.shape) != 2):
     raise ValueError(
         f"The shape of the `{array_name}` array {array.shape} should be"
-        f" 2-dimensional (`n_media_times` x `{media_channel_dim_name}`) or"
-        " 3-dimensional (`n_geos` x `n_media_times` x"
-        f" `{media_channel_dim_name}`)."
+        f" 2-dimensional (`n_media_times` x `{media_channel_dim_name}`)."
     )
 
 
@@ -45,73 +48,73 @@ class ModelSpec:
   Attributes:
     prior: A `PriorDistribution` object specifying the prior distribution of
       each set of model parameters. The distribution for a vector of parameters
-      (e.g. `alpha_m`) can be passed as either a scalar distribution or a vector
-      distribution. If a scalar distribution is passed, it will be broadcast to
-      the actual shape of the parameter vector. Note that the
+      (for example, `alpha_m`) can be passed as either a scalar distribution or
+      a vector distribution. If a scalar distribution is passed, it is broadcast
+      to the actual shape of the parameter vector. Note that the
       `PriorDistribution` contains distributions for both `roi_m` and `beta_m`,
-      but only one of these is used. If `use_roi_prior` = `True`, the `roi_m`
-      prior is used; otherwise the `beta_m` prior is used.
+      but only one of these is used. If `use_roi_prior` is set to `True`, the
+      `roi_m` prior is used. Otherwise, the `beta_m` prior is used.
     media_effects_dist: A string to specify the distribution of media random
-      effects across geos. This attribute is not used with a National level
-      model. Allowed values: "normal" or "log_normal". Default: "log_normal".
-    hill_before_adstock: A boolean indicating whether to apply the hill function
-      before the adstock function, in contrast to the default order of adstock
-      before hill. This argument does not apply to RF channels. Default:
+      effects across geos. This attribute is not used with a national-level
+      model. Allowed values: `'normal'` or `'log_normal'`. Default:
+      `'log_normal'`.
+    hill_before_adstock: A boolean indicating whether to apply the Hill function
+      before the Adstock function, instead of the default order of Adstock
+      before Hill. This argument does not apply to RF channels. Default:
       `False`.
-    max_lag: An integer indicating the maximum number of lag periods (>= 0) to
-      include in the adstock calculation. May also be set to `None`, which is
-      equivalent to infinite max lag. Default: 8.
+    max_lag: An integer indicating the maximum number of lag periods (≥ `0`) to
+      include in the Adstock calculation. Can also be set to `None`, which is
+      equivalent to infinite max lag. Default: `8`.
     unique_sigma_for_each_geo: A boolean indicating whether to use a unique
       residual variance for each geo. If `False`, then a single residual
       variance is used for all geos. Default: `False`.
-    use_roi_prior: A boolean indicating whether to use "ROI priors" and the
-      prior on `roi_m` in the prior. If `False`, then the prior on `beta_m` in
-      the prior is used. Default: `True`.
-    roi_calibration_period: An optional boolean array indicating the subset of
-      `time` and `geo` for media ROI calibration. The array can be (`n_geos` x
-      `n_media_times` x `n_media_channels`) or (`n_media_times` x
-      `n_media_channels`). If `None`, all times and geos are used for media ROI
-      calibration. Default: `None`.
-    rf_roi_calibration_period: Optional boolean tensor indicating the subset of
-      `time` and `geo` for reach and frequency ROI calibration. The array can be
-      (`n_geos` x `n_media_times` x `n_rf_channels`) or (`n_media_times` x
-      `n_rf_channels`). If `None`, all times and geos are used for media ROI
+    use_roi_prior: A boolean indicating whether to use ROI priors and the prior
+      on `roi_m` in the prior. If `False`, then the prior on `beta_m` in the
+      prior is used. Default: `True`.
+    roi_calibration_period: An optional boolean array of shape `(n_media_times,
+      n_media_channels)` indicating the subset of `time` for media ROI
+      calibration. If `None`, all times are used for media ROI calibration.
+      Default: `None`.
+    rf_roi_calibration_period: An optional boolean array of shape
+      `(n_media_times, n_rf_channels)` indicating the subset of `time` for reach
+      and frequency ROI calibration. If `None`, all times are used for media ROI
       calibration. Default: `None`.
     knots: An optional integer or list of integers indicating the knots used to
       estimate time effects. When `knots` is a list of integers, the knot
-      locations are provided by that list (zero corresponds to a knot at the
-      first time period, one corresponds to a knot at the second time, ..., and
-      (`n_times` - 1) corresponds to a knot at the last time period). Typically
-      we suggest knots at 0 and (`n_times` - 1) are included, but this is not
-      strictly necessary. When `knots` is an integer, then there are `knots`
-      many knots with locations equally spaced across the time periods
-      (including knots at zero and (`n_times` - 1). When `knots` is 1, there is
-      a single common regression coefficient used for all time periods. If
-      `knots` is set to `None`, then the numbers of knots used is equal to the
-      number of time periods in the case of a geo model. This is equivalent to
-      each time period having its own regression coefficient. If `knots` is set
-      to `None` in the case of a national model, then the number of knots used
-      is 1. Default: `None`.
+      locations are provided by that list. Zero corresponds to a knot at the
+      first time period, one corresponds to a knot at the second time period,
+      ..., and `(n_times - 1)` corresponds to a knot at the last time period).
+      Typically, we recommend including knots at `0` and `(n_times - 1)`, but
+      this is not required. When `knots` is an integer, then there are knots
+      with locations equally spaced across the time periods, (including knots at
+      zero and `(n_times - 1)`. When `knots` is` 1`, there is a single common
+      regression coefficient used for all time periods. If `knots` is set to
+      `None`, then the numbers of knots used is equal to the number of time
+      periods in the case of a geo model. This is equivalent to each time period
+      having its own regression coefficient. If `knots` is set to `None` in the
+      case of a national model, then the number of knots used is `1`. Default:
+      `None`.
     baseline_geo: An optional integer or a string for the baseline geo. The
       baseline geo is treated as the reference geo in the dummy encoding of
-      geos. Non-baseline geos have a corresponding `tau_g` indicator variable
-      which means that they have a higher prior variance than the baseline geo.
-      When set to `None`, the geo with the biggest population is used as the
+      geos. Non-baseline geos have a corresponding `tau_g` indicator variable,
+      meaning that they have a higher prior variance than the baseline geo. When
+      set to `None`, the geo with the biggest population is used as the
       baseline. Default: `None`.
-    holdout_id: Optional boolean tensor of dimensions (`n_geos` x `n_times`) or
-      (`n_times`) indicating which observations are part of the holdout sample,
-      which are excluded from the training sample. Only KPI or revenue (impact)
-      data is excluded from the training sample - media data is still included
-      as it may affect adstock of subsequent weeks. Note that if "ROI priors"
-      are used (i.e. `use_roi_prior=True`), the `roi_m` parameters correspond to
-      the ROI of all geos/times, even those in the holdout sample.
+    holdout_id: Optional boolean tensor of dimensions `(n_geos, n_times)` for a
+      geo-level model or `(n_times,)` for a national model, indicating which
+      observations are part of the holdout sample, which are excluded from the
+      training sample. Only KPI or revenue (impact) data is excluded from the
+      training sample. Media data is still included as it can affect Adstock for
+      subsequent weeks. If "ROI priors" are used, such as `use_roi_prior=True`,
+      then the `roi_m` parameters correspond to the ROI of all geos and times,
+      even those in the holdout sample.
     control_population_scaling_id: An optional boolean tensor of dimension
-      (`n_controls`) indicating the control variables for which the control
-      value should be scaled by population.
+      `(n_controls,)` indicating the control variables for which the control
+      value will be scaled by population.
   """
 
   prior: prior_distribution.PriorDistribution = dataclasses.field(
-      default_factory=lambda: prior_distribution.PriorDistribution()
+      default_factory=prior_distribution.PriorDistribution,
   )
   media_effects_dist: str = constants.MEDIA_EFFECTS_LOG_NORMAL
   hill_before_adstock: bool = False

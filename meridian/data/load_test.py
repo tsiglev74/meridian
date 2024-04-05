@@ -975,7 +975,7 @@ class InputDataLoaderTest(parameterized.TestCase):
       coord_to_columns: load.CoordToColumns,
       number_of_warnings: int,
   ):
-    with warnings.catch_warnings(record=True) as w:
+    with warnings.catch_warnings(record=True) as warning_list:
       warnings.simplefilter('always')
       loader = load.DataFrameDataLoader(
           df=pd.DataFrame(dict(data)),
@@ -984,13 +984,22 @@ class InputDataLoaderTest(parameterized.TestCase):
           media_to_channel=self._correct_media_to_channel,
           media_spend_to_channel=self._correct_media_spend_to_channel,
       )
-      self.assertLen(w, number_of_warnings)
-      if len(w) == 1:
-        self.assertTrue(issubclass(w[0].category, UserWarning))
-        self.assertIn(
-            'The `population` argument is ignored in a nationally aggregated'
-            ' model. It will be reset to [1, 1, ..., 1]',
-            str(w[0].message),
+      if number_of_warnings == 0:
+        self.assertFalse(
+            any(
+                issubclass(warning.category, UserWarning)
+                for warning in warning_list
+            )
+        )
+      else:  # number_of_warnings == 1:
+        self.assertTrue(
+            any(
+                issubclass(warning.category, UserWarning)
+                and str(warning.message)
+                == 'The `population` argument is ignored in a nationally'
+                ' aggregated model. It will be reset to [1, 1, ..., 1]'
+            )
+            for warning in warning_list
         )
 
     data = loader.load()

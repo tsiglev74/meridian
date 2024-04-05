@@ -20,12 +20,15 @@ random data (using seed=0), using same settings as the test Colab notebook.
 """
 
 from collections.abc import Mapping, Sequence
-from xml.etree import ElementTree as ET
+from xml import etree as et
 
 from meridian import constants as c
 import numpy as np
 import pandas as pd
 import xarray as xr
+
+
+__all__ = []
 
 
 INC_IMPACT_MEDIA_AND_RF_USE_PRIOR = np.array([[
@@ -398,6 +401,38 @@ SAMPLE_MROI = np.array([
         [1.093, 1.868],
     ],
 ])
+SAMPLE_CPIK = np.array([
+    [
+        [3.08717942, 3.08717942],
+        [0.71385074, 0.71385074],
+        [8.1156775, 8.1156775],
+    ],
+    [
+        [5.25037432, 5.25037432],
+        [2.74044206, 2.74044206],
+        [10.07572379, 10.07572379],
+    ],
+    [
+        [3.42448807, 3.42448807],
+        [0.84418333, 0.84418333],
+        [8.68120933, 8.68120933],
+    ],
+    [
+        [4.02361917, 4.02361917],
+        [1.59949402, 1.59949402],
+        [7.73949795, 7.73949795],
+    ],
+    [
+        [8.16407204, 8.16407204],
+        [0.71428683, 0.71428683],
+        [31.43474998, 31.43474998],
+    ],
+    [
+        [2.46112823, 2.46112823],
+        [1.31645199, 1.31645199],
+        [4.02072748, 4.02072748],
+    ],
+])
 SAMPLE_EFFECTIVENESS = np.array([
     [
         [4.161e-01, 4.063e-01],
@@ -621,7 +656,7 @@ def generate_model_fit_data(
 
 
 def generate_predictive_accuracy_table(
-    with_holdout=False, column_var: str | None = None
+    with_holdout: bool = False, column_var: str | None = None
 ) -> pd.DataFrame:
   """Helper method to simulate predictive accuracy DataFrame for Summarizer."""
   metric = [c.R_SQUARED, c.MAPE, c.WMAPE]
@@ -689,6 +724,7 @@ def generate_media_summary_metrics() -> xr.Dataset:
   cpm = np.random.random(size=len(channel))
   roi = np.random.lognormal(1, 1, size=shape)
   mroi = np.random.lognormal(0, 1, size=shape)
+  cpik = np.random.lognormal(0, 1, size=shape)
   incremental_impact = np.random.lognormal(10, 1, size=shape)
   effectiveness = np.random.lognormal(1, 1, size=shape)
   pct_of_contribution = np.random.randint(low=0, high=50, size=shape)
@@ -721,6 +757,10 @@ def generate_media_summary_metrics() -> xr.Dataset:
               [c.CHANNEL, c.METRIC, c.DISTRIBUTION],
               mroi,
           ),
+          c.CPIK: (
+              [c.CHANNEL, c.METRIC, c.DISTRIBUTION],
+              cpik,
+          ),
       },
       coords={
           c.CHANNEL: channel,
@@ -749,7 +789,6 @@ def generate_response_curve_data(
       len(channels),
       len(metric),
   )
-  roi = np.random.lognormal(1, 1, size=shape)
   spend = np.random.lognormal(
       25, 1, size=(len(spend_multiplier), len(channels))
   )
@@ -764,10 +803,6 @@ def generate_response_curve_data(
           c.INCREMENTAL_IMPACT: (
               [c.SPEND_MULTIPLIER, c.CHANNEL, c.METRIC],
               incremental_impact,
-          ),
-          c.ROI: (
-              [c.SPEND_MULTIPLIER, c.CHANNEL, c.METRIC],
-              roi,
           ),
       },
       coords={
@@ -829,7 +864,9 @@ def generate_predictive_accuracy_data(holdout_id: bool = False) -> xr.Dataset:
 
 
 def generate_optimal_frequency_data(
-    channel_prefix=c.RF_CHANNEL, num_channels=5
+    channel_prefix: str = c.RF_CHANNEL,
+    num_channels: int = 5,
+    use_roi: bool = True,
 ) -> xr.Dataset:
   """Helper method to generate simulated optimal frequency data."""
   frequency = list(np.arange(1, 7.05, 0.1))
@@ -837,16 +874,17 @@ def generate_optimal_frequency_data(
   metric = [c.MEAN, c.CI_LO, c.CI_HI]
 
   np.random.seed(0)
-  roi_by_frequency = np.random.lognormal(
+  metric_by_frequency = np.random.lognormal(
       1, 1, size=(len(frequency), len(rf_channel), len(metric))
   )
   optimal_frequency = np.random.lognormal(1, 1, size=(len(rf_channel)))
 
+  metric_name = c.ROI if use_roi else c.CPIK
   return xr.Dataset(
       data_vars={
-          c.ROI: (
+          metric_name: (
               [c.FREQUENCY, c.RF_CHANNEL, c.METRIC],
-              roi_by_frequency,
+              metric_by_frequency,
           ),
           c.OPTIMAL_FREQUENCY: (
               [c.RF_CHANNEL],
@@ -950,10 +988,10 @@ def generate_adstock_decay_data() -> pd.DataFrame:
 
 
 def get_child_element(
-    root: ET.Element,
+    root: et.ElementTree.Element,
     path: str,
     attribs: Mapping[str, str] | None = None,
-) -> ET.Element:
+) -> et.ElementTree.Element:
   """Searches for a descendant element under `root` with the given path.
 
   Args:
@@ -977,7 +1015,9 @@ def get_child_element(
   )
 
 
-def get_table_row_values(tr: ET.Element, row_element="td") -> Sequence[str]:
+def get_table_row_values(
+    tr: et.ElementTree.Element, row_element="td"
+) -> Sequence[str]:
   row_values = []
   for row in tr.findall(row_element):
     row_values.append(row.text or "")

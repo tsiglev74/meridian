@@ -199,13 +199,24 @@ class ModelTest(tf.test.TestCase, parameterized.TestCase):
             seed=0,
         )
     )
-    self.national_input_data = (
+    self.national_input_data_media_only = (
         test_utils.sample_input_data_non_revenue_revenue_per_kpi(
             n_geos=self._N_GEOS_NATIONAL,
             n_times=self._N_TIMES,
             n_media_times=self._N_MEDIA_TIMES,
             n_controls=self._N_CONTROLS,
             n_media_channels=self._N_MEDIA_CHANNELS,
+            seed=0,
+        )
+    )
+    self.national_input_data_media_and_rf = (
+        test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+            n_geos=self._N_GEOS_NATIONAL,
+            n_times=self._N_TIMES,
+            n_media_times=self._N_MEDIA_TIMES,
+            n_controls=self._N_CONTROLS,
+            n_media_channels=self._N_MEDIA_CHANNELS,
+            n_rf_channels=self._N_RF_CHANNELS,
             seed=0,
         )
     )
@@ -287,6 +298,113 @@ class ModelTest(tf.test.TestCase, parameterized.TestCase):
     }
 
   @parameterized.named_parameters(
+      dict(
+          testcase_name="national",
+          input_data_type="national",
+      ),
+      dict(
+          testcase_name="geo",
+          input_data_type="geo",
+      ),
+  )
+  def test_init_with_wrong_roi_calibration_period_shape_fails(
+      self,
+      input_data_type: str,
+  ):
+    error_msg = (
+        "The shape of `roi_calibration_period` (2, 3) is different"
+        " from `(n_media_times, n_media_channels) = (203, 3)`."
+    )
+    model_spec = spec.ModelSpec(
+        roi_calibration_period=np.ones((2, 3), dtype=bool)
+    )
+    input_data = (
+        self.national_input_data_media_and_rf
+        if input_data_type == "national"
+        else self.input_data_with_media_and_rf
+    )
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        error_msg,
+    ):
+      model.Meridian(input_data=input_data, model_spec=model_spec)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="national",
+          input_data_type="national",
+      ),
+      dict(
+          testcase_name="geo",
+          input_data_type="geo",
+      ),
+  )
+  def test_init_with_wrong_rf_roi_calibration_period_shape_fails(
+      self,
+      input_data_type: str,
+  ):
+    error_msg = (
+        "The shape of `rf_roi_calibration_period` (4, 5) is different"
+        " from `(n_media_times, n_rf_channels) = (203, 2)`."
+    )
+    model_spec = spec.ModelSpec(
+        rf_roi_calibration_period=np.ones((4, 5), dtype=bool)
+    )
+    input_data = (
+        self.national_input_data_media_and_rf
+        if input_data_type == "national"
+        else self.input_data_with_media_and_rf
+    )
+    with self.assertRaisesWithLiteralMatch(ValueError, error_msg):
+      model.Meridian(input_data=input_data, model_spec=model_spec)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="national",
+          input_data_type="national",
+          error_msg=(
+              "The shape of `holdout_id` (2, 8) is different"
+              " from `(n_times,) = (200,)`."
+          ),
+      ),
+      dict(
+          testcase_name="geo",
+          input_data_type="geo",
+          error_msg=(
+              "The shape of `holdout_id` (2, 8) is different"
+              " from `(n_geos, n_times) = (5, 200)`."
+          ),
+      ),
+  )
+  def test_init_with_wrong_holdout_id_shape_fails(
+      self, input_data_type: str, error_msg: str
+  ):
+    model_spec = spec.ModelSpec(holdout_id=np.ones((2, 8), dtype=bool))
+    input_data = (
+        self.national_input_data_media_and_rf
+        if input_data_type == "national"
+        else self.input_data_with_media_and_rf
+    )
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        error_msg,
+    ):
+      model.Meridian(input_data=input_data, model_spec=model_spec)
+
+  def test_init_with_wrong_control_population_scaling_id_shape_fails(self):
+    model_spec = spec.ModelSpec(
+        control_population_scaling_id=np.ones((7), dtype=bool)
+    )
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "The shape of `control_population_scaling_id` (7,) is different from"
+        " `(n_controls,) = (2,)`.",
+    ):
+      model.Meridian(
+          input_data=self.input_data_with_media_and_rf, model_spec=model_spec
+      )
+
+  @parameterized.named_parameters(
       ("none", None, 200), ("int", 3, 3), ("list", [0, 50, 100, 150], 4)
   )
   def test_n_knots(self, knots, expected_n_knots):
@@ -354,7 +472,7 @@ class ModelTest(tf.test.TestCase, parameterized.TestCase):
         return_value=(3, [2, 5, 8], np.eye(3)),
     ) as mock_get_knot_info:
       input_data = (
-          self.national_input_data
+          self.national_input_data_media_only
           if is_national
           else self.input_data_with_media_only
       )
@@ -370,8 +488,8 @@ class ModelTest(tf.test.TestCase, parameterized.TestCase):
     with self.assertRaisesWithLiteralMatch(
         ValueError,
         "Custom priors should be set during model creation since"
-        " `kpi_type`=`non_revenue` and `revenue_per_kpi` was not passed in."
-        " Further documentation available at"
+        " `kpi_type` = `non_revenue` and `revenue_per_kpi` was not passed in."
+        " Further documentation is available at"
         " https://developers.google.com/meridian/docs/advanced-modeling/unknown-revenue-kpi",
     ):
       model.Meridian(
@@ -403,19 +521,19 @@ class ModelTest(tf.test.TestCase, parameterized.TestCase):
     sample_spec = spec.ModelSpec()
 
     # Compare model spec.
-    self.assertEqual(meridian.model_spec, sample_spec)
+    self.assertEqual(repr(meridian.model_spec), repr(sample_spec))
 
   def test_init_with_default_national_parameters_works(self):
-    meridian = model.Meridian(input_data=self.national_input_data)
+    meridian = model.Meridian(input_data=self.national_input_data_media_only)
 
     # Compare input data.
-    self.assertEqual(meridian.input_data, self.national_input_data)
+    self.assertEqual(meridian.input_data, self.national_input_data_media_only)
 
     # Create sample model spec for comparison
     expected_spec = spec.ModelSpec()
 
     # Compare model spec.
-    self.assertEqual(meridian.model_spec, expected_spec)
+    self.assertEqual(repr(meridian.model_spec), repr(expected_spec))
 
   def test_init_geo_args_no_warning(self):
     with warnings.catch_warnings(record=True) as w:
@@ -432,7 +550,7 @@ class ModelTest(tf.test.TestCase, parameterized.TestCase):
     with warnings.catch_warnings(record=True) as warns:
       warnings.simplefilter("module")
       model.Meridian(
-          input_data=self.national_input_data,
+          input_data=self.national_input_data_media_only,
           model_spec=spec.ModelSpec(
               media_effects_dist=constants.MEDIA_EFFECTS_NORMAL
           ),
@@ -450,7 +568,7 @@ class ModelTest(tf.test.TestCase, parameterized.TestCase):
     with warnings.catch_warnings(record=True) as w:
       warnings.simplefilter("module")
       model.Meridian(
-          input_data=self.national_input_data,
+          input_data=self.national_input_data_media_only,
           model_spec=spec.ModelSpec(unique_sigma_for_each_geo=True),
       )
       self.assertLen(w, 6)
@@ -485,7 +603,7 @@ class ModelTest(tf.test.TestCase, parameterized.TestCase):
     self.assertNotIn(constants.POSTERIOR, meridian.inference_data.attrs)
 
   def test_base_national_properties(self):
-    meridian = model.Meridian(input_data=self.national_input_data)
+    meridian = model.Meridian(input_data=self.national_input_data_media_only)
     self.assertEqual(meridian.n_geos, self._N_GEOS_NATIONAL)
     self.assertEqual(meridian.n_controls, self._N_CONTROLS)
     self.assertEqual(meridian.n_times, self._N_TIMES)
@@ -913,21 +1031,25 @@ class ModelTest(tf.test.TestCase, parameterized.TestCase):
   @parameterized.named_parameters(
       dict(
           testcase_name="national",
-          roi_calibration_shape=(_N_MEDIA_TIMES, _N_MEDIA_CHANNELS),
+          input_data_type="national",
       ),
       dict(
           testcase_name="geo-level",
-          roi_calibration_shape=(_N_GEOS, _N_MEDIA_TIMES, _N_MEDIA_CHANNELS),
+          input_data_type="geo-level",
       ),
   )
-  def test_counterfactual_data_with_roi_calibration(
-      self, roi_calibration_shape: tuple[int, ...]
-  ):
+  def test_counterfactual_data_with_roi_calibration(self, input_data_type: str):
+    roi_calibration_shape = (self._N_MEDIA_TIMES, self._N_MEDIA_CHANNELS)
     roi_calibration_period = np.random.choice(
         a=[False, True], size=roi_calibration_shape
     )
+    input_data = (
+        self.national_input_data_media_and_rf
+        if input_data_type == "national"
+        else self.input_data_with_media_and_rf
+    )
     meridian = model.Meridian(
-        input_data=self.input_data_with_media_only,
+        input_data=input_data,
         model_spec=spec.ModelSpec(
             roi_calibration_period=roi_calibration_period
         ),
@@ -958,21 +1080,27 @@ class ModelTest(tf.test.TestCase, parameterized.TestCase):
   @parameterized.named_parameters(
       dict(
           testcase_name="national",
-          rf_roi_calibration_shape=(_N_MEDIA_TIMES, _N_RF_CHANNELS),
+          input_data_type="national",
       ),
       dict(
           testcase_name="geo-level",
-          rf_roi_calibration_shape=(_N_GEOS, _N_MEDIA_TIMES, _N_RF_CHANNELS),
+          input_data_type="geo-level",
       ),
   )
   def test_counterfactual_data_with_rf_roi_calibration(
-      self, rf_roi_calibration_shape: tuple[int, ...]
+      self, input_data_type: str
   ):
+    rf_roi_calibration_shape = (self._N_MEDIA_TIMES, self._N_RF_CHANNELS)
     rf_roi_calibration_period = np.random.choice(
         a=[False, True], size=rf_roi_calibration_shape
     )
+    input_data = (
+        self.national_input_data_media_and_rf
+        if input_data_type == "national"
+        else self.input_data_with_media_and_rf
+    )
     meridian = model.Meridian(
-        input_data=self.input_data_with_media_and_rf,
+        input_data=input_data,
         model_spec=spec.ModelSpec(
             rf_roi_calibration_period=rf_roi_calibration_period
         ),

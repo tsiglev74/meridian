@@ -28,6 +28,14 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 import xarray as xr
 
+
+__all__ = [
+    'ModelDiagnostics',
+    'ModelFit',
+    'ReachAndFrequency',
+]
+
+
 # Disable max row limitations in Altair.
 alt.data_transformers.disable_max_rows()
 
@@ -441,7 +449,12 @@ class ModelFit:
             x=alt.X(
                 f'{c.TIME}:T',
                 title='Time period',
-                axis=alt.Axis(grid=False, tickCount=8, domainColor=c.GREY_300),
+                axis=alt.Axis(
+                    format='%Y %b',
+                    grid=False,
+                    tickCount=8,
+                    domainColor=c.GREY_300,
+                ),
             ),
             y=alt.Y(
                 f'{c.MEAN}:Q',
@@ -627,7 +640,7 @@ class ReachAndFrequency:
     Coordinates:
       frequency, rf_channel, metric (mean, ci_hi, ci_lo)
     Data variables:
-      roi, optimal_frequency
+      roi or cpik, optimal_frequency
     """
     return self._optimal_frequency_data
 
@@ -655,7 +668,7 @@ class ReachAndFrequency:
         channels are included.
 
     Returns:
-      A DataFrame containing the weekly average frequency, mean ROI, and
+      A DataFrame containing the weekly average frequency, mean ROI or CPIK, and
       singularly valued optimal frequency per given channel.
     """
     selected_channels = (
@@ -663,20 +676,24 @@ class ReachAndFrequency:
         if selected_channels
         else self.optimal_frequency_data.rf_channel.values
     )
+    use_roi = self._meridian.input_data.revenue_per_kpi is not None
+    metric_name = c.ROI if use_roi else c.CPIK
 
-    roi_by_frequency_df = (
-        self.optimal_frequency_data[[c.ROI]]
+    performance_by_frequency_df = (
+        self.optimal_frequency_data[[metric_name]]
         .sel(rf_channel=selected_channels)
         .to_dataframe()
         .reset_index()
         .pivot(
             index=[c.RF_CHANNEL, c.FREQUENCY],
             columns=c.METRIC,
-            values=c.ROI,
+            values=metric_name,
         )
         .reset_index()
     )
-    roi_by_frequency_df.rename(columns={c.MEAN: c.ROI}, inplace=True)
+    performance_by_frequency_df.rename(
+        columns={c.MEAN: metric_name}, inplace=True
+    )
 
     optimal_freq_df = (
         self.optimal_frequency_data[[c.OPTIMAL_FREQUENCY]]
@@ -685,7 +702,7 @@ class ReachAndFrequency:
         .reset_index()
     )
 
-    return roi_by_frequency_df.merge(optimal_freq_df, on=c.RF_CHANNEL)
+    return performance_by_frequency_df.merge(optimal_freq_df, on=c.RF_CHANNEL)
 
   def plot_optimal_frequency(
       self,
@@ -700,7 +717,6 @@ class ReachAndFrequency:
       A faceted Altair plot showing a curve of the optimal frequency for the
       RF channels.
     """
-
     rf_channels = self.optimal_frequency_data.rf_channel.values
     if selected_channels and not all(
         item in rf_channels for item in selected_channels
@@ -708,24 +724,40 @@ class ReachAndFrequency:
       raise ValueError(
           'Channels specified are not in the list of all RF channels.'
       )
+    use_roi = self._meridian.input_data.revenue_per_kpi is not None
+    metric_name = c.ROI if use_roi else c.CPIK
+    metric_label = (
+        summary_text.ROI_LABEL if use_roi else summary_text.CPIK_LABEL
+    )
+    metric_legend = (
+        summary_text.EXPECTED_ROI_LABEL
+        if use_roi
+        else summary_text.EXPECTED_CPIK_LABEL
+    )
+
     optimal_frequency_df = self._transform_optimal_frequency_metrics(
         selected_channels
     )
-
     color_scale = alt.Scale(
-        domain=[c.OPTIMAL_FREQ_LABEL, c.EXPECTED_ROI_LABEL],
+        domain=[summary_text.OPTIMAL_FREQ_LABEL, metric_legend],
         range=[c.BLUE_600, c.RED_600],
     )
 
-    base = alt.Chart(optimal_frequency_df).transform_calculate(
-        optimal_freq=f"'{c.OPTIMAL_FREQ_LABEL}'",
-        expected_roi=f"'{c.EXPECTED_ROI_LABEL}'",
+    base = alt.Chart().transform_calculate(
+        optimal_freq=f"'{summary_text.OPTIMAL_FREQ_LABEL}'",
+        expected_metric=f"'{metric_legend}'",
     )
 
     line = base.mark_line(strokeWidth=4).encode(
         x=alt.X(c.FREQUENCY, title='Weekly Average Frequency'),
-        y=alt.Y(c.ROI, title='ROI'),
-        color=alt.Color(f'{c.EXPECTED_ROI}:N', scale=color_scale, title=''),
+        y=alt.Y(
+            metric_name,
+            title=metric_label,
+            axis=alt.Axis(
+                **formatter.Y_AXIS_TITLE_CONFIG,
+            ),
+        ),
+        color=alt.Color('expected_metric:N', scale=color_scale, title=''),
     )
 
     vertical_optimal_freq = base.mark_rule(
@@ -739,11 +771,11 @@ class ReachAndFrequency:
         align='left',
         dx=5,
         dy=-5,
-        fontSize=12,
+        fontSize=c.AXIS_FONT_SIZE,
         font=c.FONT_ROBOTO,
         fontWeight='lighter',
     ).encode(
-        text=alt.value(c.OPTIMAL_FREQ_LABEL),
+        text=alt.value(summary_text.OPTIMAL_FREQ_LABEL),
         color=alt.value(c.BLACK_100),
     )
 
@@ -751,7 +783,7 @@ class ReachAndFrequency:
         align='left',
         dx=110,
         dy=-5,
-        fontSize=12,
+        fontSize=c.AXIS_FONT_SIZE,
         font=c.FONT_ROBOTO,
         fontWeight='lighter',
     ).encode(
@@ -760,11 +792,19 @@ class ReachAndFrequency:
     )
 
     return (
-        alt.layer(line, vertical_optimal_freq, label_text, label_freq)
-        .facet(f'{c.RF_CHANNEL}:N', columns=3)
+        alt.layer(
+            line,
+            vertical_optimal_freq,
+            label_text,
+            label_freq,
+            data=optimal_frequency_df,
+        )
+        .facet(column=alt.Column(f'{c.RF_CHANNEL}:N', title=None))
         .properties(
             title=formatter.custom_title_params(
-                summary_text.OPTIMAL_FREQUENCY_CHART_TITLE
+                summary_text.OPTIMAL_FREQUENCY_CHART_TITLE.format(
+                    metric=metric_label
+                )
             )
         )
         .resolve_scale(x=c.INDEPENDENT, y=c.INDEPENDENT)
@@ -815,7 +855,7 @@ class MediaEffects:
         intervals, represented as a value between zero and one. Default is 0.9.
       selected_times: Optional list of a subset of time dimensions to include.
         By default, all times are included. Times should match the time
-        dimensions from calibra.InputData.
+        dimensions from `meridian.InputData`.
       by_reach: For the channel w/ reach and frequency, return the response
         curves by reach given fixed frequency if true; return the response
         curves by frequency given fixed reach if false.
@@ -1220,6 +1260,7 @@ class MediaEffects:
             )
         )
         .configure_axis(**formatter.TEXT_CONFIG)
+        .configure_legend(labelLimit=0)
         .resolve_scale(x=c.INDEPENDENT, y=c.INDEPENDENT)
     )
 
@@ -1237,7 +1278,7 @@ class MediaEffects:
         default, all channels are included.
       selected_times: Optional list of a subset of time dimensions to include.
         By default, all times are included. Times should match the time
-        dimensions from calibra.InputData.
+        dimensions from `meridian.InputData`.
       confidence_level: Confidence level to update to for the response curve
         credible intervals, represented as a value between zero and one.
       by_reach: For the channel w/ reach and frequency, return the response
@@ -1380,9 +1421,10 @@ class MediaSummary:
       df[k] = df[k].astype(str) + '%'
 
     # Format monetary values.
-    monetary = [c.SPEND] + [c.INCREMENTAL_IMPACT] * use_revenue
+    monetary = [c.CPM, c.CPIK] + [c.SPEND, c.INCREMENTAL_IMPACT] * use_revenue
     for k in monetary:
-      df[k] = '$' + df[k].astype(str)
+      if k in df.columns:
+        df[k] = '$' + df[k].astype(str)
 
     # Format the model result data variables as mean (ci_lo, ci_hi).
     index_vars = [c.CHANNEL, c.DISTRIBUTION]
@@ -1579,42 +1621,15 @@ class MediaSummary:
         else c.KPI.upper()
     )
     df = self._transform_contribution_spend_metrics()
-    roi_marker = (
-        alt.Chart()
-        .mark_tick(
-            color=c.GREEN_700,
-            thickness=4,
-            cornerRadius=c.CORNER_RADIUS,
-            size=c.PADDING_20,
-            tooltip=True,
-        )
-        .encode(
-            tooltip=alt.Tooltip([f'{c.ROI}:Q'], format='.2f'),
-            y=alt.Y('roi_scaled:Q', title='%'),
-        )
-    )
-    roi_text = (
-        alt.Chart()
-        .mark_text(
-            dy=-15,
-            fontSize=c.AXIS_FONT_SIZE,
-            color=c.GREY_900,
-        )
-        .encode(
-            text=alt.Text(f'{c.ROI}:Q', format='.1f'),
-            y='roi_scaled:Q',
-        )
-    )
     domain = [
         f'% {impact.title() if impact == c.REVENUE else impact}',
         '% Spend',
-        'Return on Investment',
     ]
     title = summary_text.SPEND_IMPACT_CHART_TITLE.format(impact=impact)
-    colors = [c.BLUE_400, c.BLUE_200, c.GREEN_700]
-    if self._meridian.input_data.revenue_per_kpi is None:
-      domain.remove('Return on Investment')
-      colors.remove(c.GREEN_700)
+    colors = [c.BLUE_400, c.BLUE_200]
+    if self._meridian.input_data.revenue_per_kpi is not None:
+      domain.append('Return on Investment')
+      colors.append(c.GREEN_700)
     spend_impact = (
         alt.Chart()
         .mark_bar(cornerRadiusEnd=2, tooltip=True)
@@ -1650,6 +1665,32 @@ class MediaSummary:
     if self._meridian.input_data.revenue_per_kpi is None:
       layer = alt.layer(spend_impact, data=df)
     else:
+      roi_marker = (
+          alt.Chart()
+          .mark_tick(
+              color=c.GREEN_700,
+              thickness=4,
+              cornerRadius=c.CORNER_RADIUS,
+              size=c.PADDING_20,
+              tooltip=True,
+          )
+          .encode(
+              tooltip=alt.Tooltip([f'{c.ROI}:Q'], format='.2f'),
+              y=alt.Y(f'{c.ROI_SCALED}:Q', title='%'),
+          )
+      )
+      roi_text = (
+          alt.Chart()
+          .mark_text(
+              dy=-15,
+              fontSize=c.AXIS_FONT_SIZE,
+              color=c.GREY_900,
+          )
+          .encode(
+              text=alt.Text(f'{c.ROI}:Q', format='.1f'),
+              y=f'{c.ROI_SCALED}:Q',
+          )
+      )
       layer = alt.layer(spend_impact, roi_marker, roi_text, data=df)
 
     # To group the impact and spend bar plot with the ROI markers, facet the
@@ -1688,76 +1729,41 @@ class MediaSummary:
           'Not able to plot ROI-related metrics as `revenue_per_kpi` is'
           ' unknown.'
       )
-    roi_df = (
-        self.media_summary_metrics[c.ROI]
-        .sel(distribution=c.POSTERIOR)
-        .drop_sel(channel=c.ALL_CHANNELS)
-        .to_dataframe()
-        .reset_index()
-        .pivot(
-            index=c.CHANNEL,
-            columns=c.METRIC,
-            values=c.ROI,
-        )
-        .reset_index()
-    )
-
-    plot = (
-        alt.Chart(roi_df)
-        .mark_bar(size=40, cornerRadiusEnd=2, color=c.BLUE_600)
-        .encode(
-            x=alt.X(
-                f'{c.CHANNEL}:N',
-                title='Channel',
-                axis=alt.Axis(labelAngle=-45),
-            ),
-            y=alt.Y(
-                f'{c.MEAN}:Q',
-                axis=alt.Axis(gridDash=[3, 2]),
-                title=summary_text.ROI_LABEL,
-            ),
-        )
-        .properties(width=alt.Step(80))
-    )
-    bar_width = 2
-
     if include_ci:
       ci = int(self._confidence_level * 100)
       title = summary_text.ROI_CHANNEL_CHART_TITLE_FORMAT.format(
           ci=f'with {ci}% credible interval'
       )
-      error_bar = (
-          alt.Chart(roi_df)
-          .mark_errorbar(ticks=True, color=c.BLUE_300)
-          .encode(
-              alt.X(f'{c.CHANNEL}:N'),
-              alt.Y(f'{c.CI_HI}:Q', title='ROI'),
-              alt.Y2(f'{c.CI_LO}:Q'),
-              strokeWidth=alt.value(bar_width),
-          )
+    else:
+      title = summary_text.ROI_CHANNEL_CHART_TITLE_FORMAT.format(ci='')
+    return self._plot_metric_bar_chart(
+        c.ROI, summary_text.ROI_LABEL, title, include_ci=include_ci
+    )
+
+  def plot_cpik(self, include_ci: bool = True) -> alt.Chart:
+    """Plots the CPIK bar chart for each channel.
+
+    Args:
+      include_ci: If `True`, plots the credible interval. Defaults to `True`.
+
+    Returns:
+      An Altair plot showing the CPIK per channel.
+    """
+    if self._meridian.input_data.revenue_per_kpi is not None:
+      raise TypeError(
+          'CPIK metrics are only available when `revenue_per_kpi` is unknown.'
+          ' Please use `plot_roi_bar_chart()` instead.'
       )
-      roi_text = error_bar.mark_text(
-          align='center', baseline='bottom', dy=-5
-      ).encode(text=alt.Text(f'{c.MEAN}:Q', format='.2f'))
-      mean_dot = (
-          alt.Chart(roi_df)
-          .mark_point(filled=True, color=c.BLUE_300, tooltip=True)
-          .encode(alt.X(f'{c.CHANNEL}:N'), alt.Y(f'{c.MEAN}:Q'))
-      )
-      plot = (plot + error_bar + roi_text + mean_dot).configure_tick(
-          bandSize=10, thickness=bar_width
+    if include_ci:
+      ci = int(self._confidence_level * 100)
+      title = summary_text.CPIK_CHANNEL_CHART_TITLE_FORMAT.format(
+          ci=f'with {ci}% credible interval'
       )
     else:
-      roi_text = plot.mark_text(
-          align='center', baseline='bottom', dy=-5
-      ).encode(text=alt.Text(f'{c.MEAN}:Q', format='.2f'))
-      plot = (plot + roi_text).configure_tick(bandSize=10, thickness=bar_width)
-      title = summary_text.ROI_CHANNEL_CHART_TITLE_FORMAT.format(ci='')
-
-    return plot.properties(
-        title=formatter.custom_title_params(title),
-        width=alt.Step(80),
-    ).configure_axis(titlePadding=c.PADDING_10, **formatter.TEXT_CONFIG)
+      title = summary_text.CPIK_CHANNEL_CHART_TITLE_FORMAT.format(ci='')
+    return self._plot_metric_bar_chart(
+        c.CPIK, summary_text.CPIK_LABEL, title, include_ci=include_ci
+    )
 
   def plot_roi_vs_effectiveness(
       self,
@@ -1910,6 +1916,75 @@ class MediaSummary:
       )
     return plot.properties(title=formatter.custom_title_params(title))
 
+  def _plot_metric_bar_chart(
+      self, metric: str, metric_label: str, title: str, include_ci: bool = True
+  ) -> alt.Chart:
+    """Plots a bar chart showing the specified metric for each channel.
+
+    Args:
+      metric: A media summary metric to plot.
+      metric_label: The label to use to identify the metric on the plot axis.
+      title: The title of the plot.
+      include_ci: If `True`, plots the credible interval. Defaults to `True`.
+
+    Returns:
+      An Altair plot showing the specified metric per channel.
+    """
+    df = self._media_summary_metric_to_df(metric)
+    base = (
+        alt.Chart(df)
+        .mark_bar(
+            size=c.BAR_SIZE, cornerRadiusEnd=c.CORNER_RADIUS, color=c.BLUE_600
+        )
+        .encode(
+            x=alt.X(
+                f'{c.CHANNEL}:N',
+                title='Channel',
+                axis=alt.Axis(labelAngle=-45),
+            ),
+            y=alt.Y(
+                f'{metric}:Q',
+                axis=alt.Axis(gridDash=[3, 2], **formatter.Y_AXIS_TITLE_CONFIG),
+                title=metric_label,
+            ),
+        )
+        .properties(width=alt.Step(80))
+    )
+    metric_text = base.mark_text(
+        align='center',
+        baseline='bottom',
+        dy=-5,
+        fontSize=c.AXIS_FONT_SIZE,
+        color=c.GREY_900,
+    ).encode(text=alt.Text(f'{metric}:Q', format='.2f'))
+
+    bar_width = 2
+    if include_ci:
+      error_bar = (
+          alt.Chart(df)
+          .mark_errorbar(ticks=True, color=c.BLUE_300)
+          .encode(
+              alt.X(f'{c.CHANNEL}:N'),
+              alt.Y(f'{c.CI_HI}:Q', title=metric_label),
+              alt.Y2(f'{c.CI_LO}:Q'),
+              strokeWidth=alt.value(bar_width),
+          )
+      )
+      mean_dot = (
+          alt.Chart(df)
+          .mark_point(filled=True, color=c.BLUE_300, tooltip=True)
+          .encode(alt.X(f'{c.CHANNEL}:N'), alt.Y(f'{metric}:Q'))
+      )
+      plot = base + error_bar + mean_dot + metric_text
+    else:
+      plot = base + metric_text
+
+    return (
+        plot.configure_tick(bandSize=10, thickness=bar_width)
+        .properties(title=formatter.custom_title_params(title))
+        .configure_axis(titlePadding=c.PADDING_10, **formatter.TEXT_CONFIG)
+    )
+
   def _transform_media_metrics_for_roi_bubble_plot(
       self, metric: str, selected_channels: Sequence[str] | None = None
   ) -> pd.DataFrame:
@@ -2006,7 +2081,6 @@ class MediaSummary:
       impact = summary_text.REVENUE_LABEL
     else:
       impact = summary_text.KPI_LABEL
-    roi_df = self._media_summary_metrics_to_mean_df(metrics=[c.ROI])
     total_media_impact = (
         self.media_summary_metrics[c.INCREMENTAL_IMPACT]
         .sel(
@@ -2035,10 +2109,13 @@ class MediaSummary:
     spend_pct_df['label'] = '% Spend'
 
     pct_df = pd.concat([impact_pct_df, spend_pct_df])
-    plot_df = pct_df.merge(roi_df, on=c.CHANNEL)
-
-    scale_factor = plot_df[c.PCT].max() / plot_df[c.ROI].max()
-    plot_df['roi_scaled'] = plot_df[c.ROI] * scale_factor
+    if self._meridian.input_data.revenue_per_kpi is not None:
+      roi_df = self._media_summary_metrics_to_mean_df(metrics=[c.ROI])
+      plot_df = pct_df.merge(roi_df, on=c.CHANNEL)
+      scale_factor = plot_df[c.PCT].max() / plot_df[c.ROI].max()
+      plot_df[c.ROI_SCALED] = plot_df[c.ROI] * scale_factor
+    else:
+      plot_df = pct_df
 
     return plot_df
 
@@ -2072,4 +2149,31 @@ class MediaSummary:
         metrics_dataset.to_dataframe()
         .drop(columns=[c.METRIC, c.DISTRIBUTION])
         .reset_index()
+    )
+
+  def _media_summary_metric_to_df(self, metric: str) -> pd.DataFrame:
+    """Transforms a media summary metric to a pivoted dataframe.
+
+    The dataframe includes the posterior data for the selected metric and its
+    credible interval per channel.
+
+    Args:
+      metric: The media summary metric to include in the dataframe.
+
+    Returns:
+      A dataframe of the posterior values for the selected metric.
+    """
+    return (
+        self.media_summary_metrics[metric]
+        .sel(distribution=c.POSTERIOR)
+        .drop_sel(channel=c.ALL_CHANNELS)
+        .to_dataframe()
+        .reset_index()
+        .pivot(
+            index=c.CHANNEL,
+            columns=c.METRIC,
+            values=metric,
+        )
+        .reset_index()
+        .rename(columns={c.MEAN: metric})
     )

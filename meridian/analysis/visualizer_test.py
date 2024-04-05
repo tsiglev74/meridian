@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from collections.abc import Hashable
 import os
 
 from absl.testing import absltest
@@ -653,7 +652,12 @@ class ModelFitTest(absltest.TestCase):
     plot = self.model_fit_kpi_type_revenue.plot_model_fit()
     self.assertEqual(
         plot.layer[0].encoding.x.axis.to_dict(),
-        {"domainColor": c.GREY_300, "grid": False, "tickCount": 8},
+        {
+            "domainColor": c.GREY_300,
+            "grid": False,
+            "tickCount": 8,
+            "format": "%Y %b",
+        },
     )
     self.assertEqual(
         plot.layer[0].encoding.y.axis.to_dict(),
@@ -721,11 +725,11 @@ class ReachAndFrequencyTest(parameterized.TestCase):
     self.assertEqual(line_encoding.x.shorthand, c.FREQUENCY)
     self.assertEqual(line_encoding.x.title, "Weekly Average Frequency")
     self.assertEqual(line_encoding.y.shorthand, c.ROI)
-    self.assertEqual(line_encoding.y.title, "ROI")
+    self.assertEqual(line_encoding.y.title, summary_text.ROI_LABEL)
 
     self.assertEqual(
         line_encoding.color.scale.domain,
-        [c.OPTIMAL_FREQ_LABEL, c.EXPECTED_ROI_LABEL],
+        [summary_text.OPTIMAL_FREQ_LABEL, summary_text.EXPECTED_ROI_LABEL],
     )
     self.assertEqual(line_encoding.color.scale.range, [c.BLUE_600, c.RED_600])
 
@@ -822,13 +826,13 @@ class ReachAndFrequencyTest(parameterized.TestCase):
     plot = self.reach_and_frequency.plot_optimal_frequency()
 
     self.assertIsInstance(plot, alt.FacetChart)
-    self.assertIsInstance(plot.facet, alt.Facet)
+    self.assertEqual(plot.facet.column.shorthand, f"{c.RF_CHANNEL}:N")
+    self.assertIsNone(plot.facet.column.title)
     self.assertLen(plot.spec.layer, 4)
 
-  def test_reach_and_frequency_plot_optimal_freq_facet_properties(self):
+  def test_reach_and_frequency_plot_optimal_freq_properties(self):
     plot_facet_by_channel = self.reach_and_frequency.plot_optimal_frequency()
 
-    self.assertEqual(plot_facet_by_channel.columns, 3)
     self.assertEqual(plot_facet_by_channel.resolve.scale.x, c.INDEPENDENT)
     self.assertEqual(plot_facet_by_channel.resolve.scale.y, c.INDEPENDENT)
     self.assertEqual(
@@ -836,7 +840,9 @@ class ReachAndFrequencyTest(parameterized.TestCase):
     )
     self.assertEqual(
         plot_facet_by_channel.title.text,
-        summary_text.OPTIMAL_FREQUENCY_CHART_TITLE,
+        summary_text.OPTIMAL_FREQUENCY_CHART_TITLE.format(
+            metric=summary_text.ROI_LABEL
+        ),
     )
 
   def test_reach_and_frequency_plot_optimal_freq_correct_data(self):
@@ -861,6 +867,49 @@ class ReachAndFrequencyTest(parameterized.TestCase):
     self.assertTrue(frequency > 0 for frequency in df.frequency)
     self.assertTrue(roi > 0 for roi in df.roi)
     self.assertTrue(opt_freq > 0 for opt_freq in df.optimal_frequency)
+
+  def test_reach_and_frequency_plot_optimal_freq_cpik_labels(self):
+    with mock.patch.object(
+        analyzer.Analyzer,
+        "optimal_freq",
+        return_value=test_utils.generate_optimal_frequency_data(use_roi=False),
+    ):
+      data = mock.create_autospec(input_data.InputData, instance=True)
+      data.revenue_per_kpi = None
+      meridian = mock.create_autospec(
+          model.Meridian, instance=True, input_data=data
+      )
+      rf = visualizer.ReachAndFrequency(meridian)
+
+      plot = rf.plot_optimal_frequency()
+      layer = plot.spec.layer
+      curve_layer = layer[0]
+      curve_encoding = curve_layer.encoding
+
+      self.assertEqual(curve_encoding.y.shorthand, c.CPIK)
+      self.assertEqual(curve_encoding.y.title, summary_text.CPIK_LABEL)
+      self.assertEqual(
+          curve_encoding.color.scale.domain,
+          [summary_text.OPTIMAL_FREQ_LABEL, summary_text.EXPECTED_CPIK_LABEL],
+      )
+
+  def test_reach_and_frequency_plot_optimal_freq_cpik_labels_correct_data(self):
+    with mock.patch.object(
+        analyzer.Analyzer,
+        "optimal_freq",
+        return_value=test_utils.generate_optimal_frequency_data(use_roi=False),
+    ):
+      data = mock.create_autospec(input_data.InputData, instance=True)
+      data.revenue_per_kpi = None
+      meridian = mock.create_autospec(
+          model.Meridian, instance=True, input_data=data
+      )
+      rf = visualizer.ReachAndFrequency(meridian)
+
+      plot = rf.plot_optimal_frequency()
+      df = plot.data
+      self.assertIn(c.CPIK, df.columns)
+      self.assertNotIn(c.ROI, df.columns)
 
 
 class MediaEffectsTest(parameterized.TestCase):
@@ -1128,7 +1177,7 @@ class MediaEffectsTest(parameterized.TestCase):
     self.assertLen(set(plot_2_layered.data[c.CHANNEL]), 2)
     self.assertSetEqual(
         set(plot_2_layered.data[c.CHANNEL]),
-        {"channel 3", "channel 4"},
+        {"channel 0", "channel 3"},
     )
     self.assertEqual(
         plot_2_layered.title.text,
@@ -1137,7 +1186,7 @@ class MediaEffectsTest(parameterized.TestCase):
     self.assertLen(set(plot_3_layered.data[c.CHANNEL]), 3)
     self.assertSetEqual(
         set(plot_3_layered.data[c.CHANNEL]),
-        {"channel 4", "channel 2", "channel 3"},
+        {"channel 4", "channel 3", "channel 0"},
     )
     self.assertEqual(
         plot_3_layered.title.text,
@@ -1400,6 +1449,7 @@ class MediaEffectsTest(parameterized.TestCase):
         plot_media.title.text,
         summary_text.HILL_SATURATION_CHART_TITLE,
     )
+    self.assertEqual(plot_media.config.legend.labelLimit, 0)
 
   def test_media_effects_plot_hill_curves_media_rf_x_axis_label(self):
     plot_media, plot_rf = self.media_effects_kpi_type_revenue.plot_hill_curves()
@@ -1575,7 +1625,6 @@ class MediaSummaryTest(parameterized.TestCase):
     df = self.media_summary_revenue.summary_table(include_posterior=False)
     self.assertNotIn(c.POSTERIOR, df[c.DISTRIBUTION])
 
-  # TODO(b/323002234): Add a test for the KPI scenario.
   def test_media_summary_summary_table_revenue(self):
     df = self.media_summary_revenue.summary_table()
     self.assertListEqual(
@@ -1593,6 +1642,34 @@ class MediaSummaryTest(parameterized.TestCase):
             c.ROI,
             c.EFFECTIVENESS,
             c.MROI,
+            c.CPIK,
+        ],
+    )
+
+  def test_media_summary_summary_table_kpi(self):
+    media_metrics = test_utils.generate_media_summary_metrics().drop_vars(
+        [c.ROI, c.MROI]
+    )
+    with mock.patch.object(
+        visualizer.MediaSummary,
+        "media_summary_metrics",
+        new=property(lambda unused_self: media_metrics),
+    ):
+      df = self.media_summary_kpi.summary_table()
+    self.assertListEqual(
+        list(df.columns),
+        [
+            c.CHANNEL,
+            c.DISTRIBUTION,
+            c.IMPRESSIONS,
+            summary_text.PCT_IMPRESSIONS_COL,
+            c.SPEND,
+            summary_text.PCT_SPEND_COL,
+            c.CPM,
+            summary_text.INC_KPI_COL,
+            summary_text.PCT_CONTRIBUTION_COL,
+            c.EFFECTIVENESS,
+            c.CPIK,
         ],
     )
 
@@ -1659,10 +1736,10 @@ class MediaSummaryTest(parameterized.TestCase):
     self.assertIsInstance(plot, alt.LayerChart)
     self.assertEqual(plot.layer[0].encoding.x.shorthand, f"{c.CHANNEL}:N")
     self.assertEqual(plot.layer[0].encoding.x.axis.labelAngle, -45)
-    self.assertEqual(plot.layer[0].encoding.y.shorthand, f"{c.MEAN}:Q")
+    self.assertEqual(plot.layer[0].encoding.y.shorthand, f"{c.ROI}:Q")
 
     self.assertEqual(plot.layer[1].encoding.x.shorthand, f"{c.CHANNEL}:N")
-    self.assertEqual(plot.layer[1].encoding.y.shorthand, f"{c.MEAN}:Q")
+    self.assertEqual(plot.layer[1].encoding.y.shorthand, f"{c.ROI}:Q")
     self.assertEqual(plot.layer[1].mark.align, "center")
     self.assertEqual(plot.layer[1].mark.baseline, "bottom")
     self.assertEqual(plot.layer[1].mark.dy, -5)
@@ -1683,10 +1760,56 @@ class MediaSummaryTest(parameterized.TestCase):
     self.assertTrue(plot.layer[1].mark.ticks)
     self.assertTrue(plot.layer[2].mark.tooltip)
 
-    self.assertEqual(plot.layer[2].mark.align, "center")
-    self.assertEqual(plot.layer[2].mark.baseline, "bottom")
-    self.assertEqual(plot.layer[2].mark.dy, -5)
-    self.assertEqual(plot.layer[2].mark.type, "text")
+    self.assertEqual(plot.layer[3].mark.align, "center")
+    self.assertEqual(plot.layer[3].mark.baseline, "bottom")
+    self.assertEqual(plot.layer[3].mark.dy, -5)
+    self.assertEqual(plot.layer[3].mark.type, "text")
+
+  def test_media_summary_revenue_plot_cpik_not_available(self):
+    with self.assertRaisesWithLiteralMatch(
+        TypeError,
+        "CPIK metrics are only available when `revenue_per_kpi` is unknown."
+        " Please use `plot_roi_bar_chart()` instead.",
+    ):
+      self.media_summary_revenue.plot_cpik()
+
+  def test_media_summary_plot_cpik_no_ci_plots_bar_chart(self):
+    plot = self.media_summary_kpi.plot_cpik(include_ci=False)
+    self.assertIsInstance(plot, alt.LayerChart)
+    self.assertEqual(plot.layer[0].encoding.x.shorthand, f"{c.CHANNEL}:N")
+    self.assertEqual(plot.layer[0].encoding.x.axis.labelAngle, -45)
+    self.assertEqual(plot.layer[0].encoding.y.shorthand, f"{c.CPIK}:Q")
+
+    self.assertEqual(plot.layer[1].encoding.x.shorthand, f"{c.CHANNEL}:N")
+    self.assertEqual(plot.layer[1].encoding.y.shorthand, f"{c.CPIK}:Q")
+    self.assertEqual(plot.layer[1].mark.align, "center")
+    self.assertEqual(plot.layer[1].mark.baseline, "bottom")
+    self.assertEqual(plot.layer[1].mark.dy, -5)
+    self.assertEqual(plot.layer[1].mark.type, "text")
+    self.assertEqual(
+        plot.title.text,
+        summary_text.CPIK_CHANNEL_CHART_TITLE_FORMAT.format(ci=""),
+    )
+
+  def test_media_summary_plot_cpik_include_ci(self):
+    plot = self.media_summary_kpi.plot_cpik(include_ci=True)
+    self.assertIsInstance(plot, alt.LayerChart)
+    self.assertLen(plot.layer, 4)
+    self.assertEqual(
+        plot.title.text,
+        summary_text.CPIK_CHANNEL_CHART_TITLE_FORMAT.format(
+            ci="with 90% credible interval"
+        ),
+    )
+    self.assertEqual(plot.layer[1].encoding.y.shorthand, f"{c.CI_HI}:Q")
+    self.assertEqual(plot.layer[1].encoding.y2.shorthand, f"{c.CI_LO}:Q")
+    self.assertTrue(plot.layer[1].mark.ticks)
+    self.assertTrue(plot.layer[2].mark.tooltip)
+
+    self.assertEqual(plot.layer[3].mark.align, "center")
+    self.assertEqual(plot.layer[3].mark.baseline, "bottom")
+    self.assertEqual(plot.layer[3].mark.dy, -5)
+    self.assertEqual(plot.layer[3].mark.type, "text")
 
   def test_media_summary_plot_waterfall_chart_correct_data(self):
     media_metrics = xr.Dataset(

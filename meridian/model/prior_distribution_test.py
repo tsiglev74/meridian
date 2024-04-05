@@ -63,8 +63,7 @@ class PriorDistributionTest(parameterized.TestCase):
         c.ROI_RF: tfp.distributions.LogNormal(0.2, 0.9, name=c.ROI_RF),
     }
 
-    self.sample_broadcast = prior_distribution.broadcast_prior_distribution(
-        prior_distribution=prior_distribution.PriorDistribution(),
+    self.sample_broadcast = prior_distribution.PriorDistribution().broadcast(
         n_geos=_N_GEOS,
         n_media_channels=_N_MEDIA_CHANNELS,
         n_rf_channels=_N_RF_CHANNELS,
@@ -170,8 +169,7 @@ class PriorDistributionTest(parameterized.TestCase):
 
   def test_broadcast_preserves_distribution(self):
     distribution = prior_distribution.PriorDistribution()
-    broadcast_distribution = prior_distribution.broadcast_prior_distribution(
-        prior_distribution=distribution,
+    broadcast_distribution = distribution.broadcast(
         n_geos=_N_GEOS,
         n_media_channels=_N_MEDIA_CHANNELS,
         n_rf_channels=_N_RF_CHANNELS,
@@ -239,8 +237,7 @@ class PriorDistributionTest(parameterized.TestCase):
         )
     )
 
-    broadcast_distribution = prior_distribution.broadcast_prior_distribution(
-        prior_distribution=distribution,
+    broadcast_distribution = distribution.broadcast(
         n_geos=_N_GEOS,
         n_media_channels=_N_MEDIA_CHANNELS,
         n_rf_channels=_N_RF_CHANNELS,
@@ -353,8 +350,7 @@ class PriorDistributionTest(parameterized.TestCase):
     with warnings.catch_warnings(record=True) as warns:
       # Cause all warnings to always be triggered.
       warnings.simplefilter('always')
-      broadcast_distribution = prior_distribution.broadcast_prior_distribution(
-          prior_distribution=distribution,
+      broadcast_distribution = distribution.broadcast(
           n_geos=_N_GEOS_NATIONAL,
           n_media_channels=_N_MEDIA_CHANNELS,
           n_rf_channels=_N_RF_CHANNELS,
@@ -505,8 +501,7 @@ class PriorDistributionTest(parameterized.TestCase):
     )
 
   def test_setstate_correct(self):
-    distribution = prior_distribution.broadcast_prior_distribution(
-        prior_distribution=prior_distribution.PriorDistribution(),
+    distribution = prior_distribution.PriorDistribution().broadcast(
         n_geos=_N_GEOS,
         n_media_channels=_N_MEDIA_CHANNELS,
         n_rf_channels=_N_RF_CHANNELS,

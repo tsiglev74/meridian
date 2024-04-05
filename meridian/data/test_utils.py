@@ -425,7 +425,7 @@ def random_media_spend_nd_da(
   This function generates a 1-D, 2-D or 3-D version of the `media_spend`
   DataArray depending on the `n_geos`, `n_times` and `n_media_channels`
   arguments. There are only 2 shapes accepted by the `InputData` class:
-  (`geo`, `time`, `media_channel`) and (`media_channel`) but we use also the 2-D
+  `(geo, time, media_channel)` and `(media_channel)` but we use also the 2-D
   version of this function to test if `InputData` fails to initialize with a 2-D
   media_spend data.
 
@@ -693,7 +693,7 @@ def random_rf_spend_nd_da(
   This function generates a 1-D, 2-D or 3-D version of the `rf_spend` DataArray
   depending on the `n_geos`, `n_times` and `n_rf_channels` arguments.
   There are 3 accepted shapes accepted by the `InputData` class:
-  (`rf_channel`), (`geo`, `time`, rf_channel`) and (`geo`, `rf_channel`).
+  `(rf_channel)`, `(geo, time, rf_channel)` and `(geo, rf_channel)`.
   """
   np.random.seed(seed)
 
@@ -828,11 +828,11 @@ def dataset_to_dataframe(
     frequency_column_names: list[str] | None = None,
     rf_spend_column_names: list[str] | None = None,
 ) -> pd.DataFrame:
-  """Converts a dataset into the pd.DataFrame format.
+  """Converts a dataset into the `pd.DataFrame` format.
 
   Args:
-    dataset: An Xarray Dataset consisting of the following DataArrays: kpi,
-      revenue_per_kpi, population, media, media_spend, controls.
+    dataset: An `xarray.Dataset` consisting of the following DataArrays: `kpi`,
+      `revenue_per_kpi`, `population`, `media`, `media_spend`, and `controls`.
     controls_column_names: A list of desired column names for controls data in
       the output DataFrame.
     media_column_names: A list of desired column names for media data in the
@@ -843,12 +843,12 @@ def dataset_to_dataframe(
       output DataFrame.
     frequency_column_names: A list of desired column names for frequency data in
       the output DataFrame.
-    rf_spend_column_names: A list of desired column names for rf_spend data in
+    rf_spend_column_names: A list of desired column names for `rf_spend` data in
       the output DataFrame.
 
   Returns:
-    A Pandas DataFrame with columns 'geo' and 'time' followed by kpi,
-    revenue_per_kpi, population, media, media_spend and controls data.
+    A Pandas DataFrame with columns `geo` and `time` followed by `kpi`,
+    `revenue_per_kpi`, `population`, `media`, `media_spend` and `controls` data.
   """
   kpi = dataset[c.KPI].to_dataframe(name=c.KPI)
   revenue_per_kpi = dataset[c.REVENUE_PER_KPI].to_dataframe(
@@ -931,7 +931,7 @@ def sample_coord_to_columns(
     n_rf_channels: int | None = None,
     include_revenue_per_kpi: bool = True,
 ) -> load.CoordToColumns:
-  """Returns a sample coord_to_columns mapping for testing."""
+  """Returns a sample `coord_to_columns` mapping for testing."""
 
   if n_media_channels is not None:
     media = _sample_names('media_', n_media_channels)
@@ -965,7 +965,7 @@ def sample_coord_to_columns(
 
 
 def sample_input_data_from_dataset(dataset: xr.Dataset, kpi_type: str):
-  """Generates a sample InputData from a full Dataset."""
+  """Generates a sample `InputData` from a full xarray Dataset."""
   return input_data.InputData(
       kpi=dataset.kpi,
       kpi_type=kpi_type,
@@ -990,7 +990,8 @@ def sample_input_data_revenue(
     n_rf_channels: int | None = None,
     seed: int = 0,
 ):
-  """Generates sample InputData for revenue_per_kpi and kpi_type=`revenue`."""
+  """Generates sample InputData for `revenue_per_kpi` and `kpi_type='revenue'`.
+  """
   dataset = random_dataset(
       n_geos=n_geos,
       n_times=n_times,
@@ -1025,7 +1026,8 @@ def sample_input_data_non_revenue_revenue_per_kpi(
     n_rf_channels: int | None = None,
     seed: int = 0,
 ):
-  """Generates sample InputData for revenue_per_kpi and kpi_type=`revenue`."""
+  """Generates sample InputData for `revenue_per_kpi` and `kpi_type='revenue'`.
+  """
   dataset = random_dataset(
       n_geos=n_geos,
       n_times=n_times,
@@ -1059,7 +1061,8 @@ def sample_input_data_non_revenue_no_revenue_per_kpi(
     n_rf_channels: int | None = None,
     seed: int = 0,
 ):
-  """Generates sample InputData for revenue_per_kpi=None and kpi_type=`non_revenue`."""
+  """Generates sample InputData for non-revenue and `revenue_per_kpi=None`.
+  """
   dataset = random_dataset(
       n_geos=n_geos,
       n_times=n_times,

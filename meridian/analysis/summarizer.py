@@ -29,27 +29,35 @@ import pandas as pd
 import xarray as xr
 
 
+__all__ = [
+    'Summarizer',
+    'MODEL_FIT_CARD_SPEC',
+    'CHANNEL_CONTRIB_CARD_SPEC',
+    'ROI_BREAKDOWN_CARD_SPEC',
+    'CPIK_BREAKDOWN_CARD_SEPC',
+    'RESPONSE_CURVES_CARD_SPEC',
+]
+
+
 MODEL_FIT_CARD_SPEC = formatter.CardSpec(
     id=summary_text.MODEL_FIT_CARD_ID,
     title=summary_text.MODEL_FIT_CARD_TITLE,
 )
-REVENUE_CONTRIB_CARD_SPEC = formatter.CardSpec(
-    id=summary_text.IMPACT_CONTRIB_CARD_ID,
-    title=summary_text.IMPACT_CONTRIB_CARD_TITLE.format(
-        impact=c.REVENUE.title()
-    ),
-)
-KPI_CONTRIB_CARD_SPEC = formatter.CardSpec(
-    id=summary_text.IMPACT_CONTRIB_CARD_ID,
-    title=summary_text.IMPACT_CONTRIB_CARD_TITLE.format(impact=c.KPI.upper()),
+CHANNEL_CONTRIB_CARD_SPEC = formatter.CardSpec(
+    id=summary_text.CHANNEL_CONTRIB_CARD_ID,
+    title=summary_text.CHANNEL_CONTRIB_CARD_TITLE,
 )
 ROI_BREAKDOWN_CARD_SPEC = formatter.CardSpec(
     id=summary_text.ROI_BREAKDOWN_CARD_ID,
     title=summary_text.ROI_BREAKDOWN_CARD_TITLE,
 )
-BUDGET_OPTIMIZATION_CARD_SPEC = formatter.CardSpec(
-    id=summary_text.BUDGET_OPTIMIZATION_CARD_ID,
-    title=summary_text.BUDGET_OPTIMIZATION_CARD_TITLE,
+CPIK_BREAKDOWN_CARD_SEPC = formatter.CardSpec(
+    id=summary_text.CPIK_BREAKDOWN_CARD_ID,
+    title=summary_text.CPIK_BREAKDOWN_CARD_TITLE,
+)
+RESPONSE_CURVES_CARD_SPEC = formatter.CardSpec(
+    id=summary_text.RESPONSE_CURVES_CARD_ID,
+    title=summary_text.RESPONSE_CURVES_CARD_TITLE,
 )
 
 
@@ -69,8 +77,8 @@ class Summarizer:
     return visualizer.ModelDiagnostics(self._meridian)
 
   @functools.cached_property
-  def _response_time_values(self) -> Sequence[dt.datetime]:
-    """The response data array's `time` coordinates as `datetime` objects."""
+  def _kpi_time_values(self) -> Sequence[dt.datetime]:
+    """The KPI data array's `time` coordinates as `datetime` objects."""
     return [
         dt.datetime.strptime(value, c.DATE_FORMAT)
         for value in self._meridian.input_data.time.values
@@ -114,15 +122,15 @@ class Summarizer:
       end_date: dt.datetime | None = None,
   ) -> str:
     """Generate HTML results summary output (as sanitized content str)."""
-    start_date = start_date or min(self._response_time_values)
-    end_date = end_date or max(self._response_time_values)
+    start_date = start_date or min(self._kpi_time_values)
+    end_date = end_date or max(self._kpi_time_values)
 
-    if start_date not in self._response_time_values:
+    if start_date not in self._kpi_time_values:
       raise ValueError(
           f'start_date ({start_date.strftime(c.DATE_FORMAT)}) must be'
           ' in the time coordinates!'
       )
-    if end_date not in self._response_time_values:
+    if end_date not in self._kpi_time_values:
       raise ValueError(
           f'end_date ({end_date.strftime(c.DATE_FORMAT)}) must be'
           ' in the time coordinates!'
@@ -153,11 +161,12 @@ class Summarizer:
       self,
       start_date: dt.datetime | None = None,
       end_date: dt.datetime | None = None,
-  ) -> Sequence[str]:
+  ) -> Sequence[str] | None:
+    """Returns the selected times in the given time range."""
+    if start_date is None and end_date is None:
+      return None
     selected_times = [
-        date
-        for date in self._response_time_values
-        if start_date <= date <= end_date
+        date for date in self._kpi_time_values if start_date <= date <= end_date
     ]
     return [time.strftime(c.DATE_FORMAT) for time in selected_times]
 
@@ -183,7 +192,10 @@ class Summarizer:
             template_env, selected_times=selected_times
         ),
         self._create_impact_contrib_card_html(template_env, media_summary),
-        self._create_budget_optimization_card_html(
+        self._create_performance_breakdown_card_html(
+            template_env, media_summary
+        ),
+        self._create_response_curves_card_html(
             template_env=template_env,
             selected_times=selected_times,
             media_summary=media_summary,
@@ -191,13 +203,6 @@ class Summarizer:
             reach_frequency=reach_frequency,
         ),
     ]
-    # If Meridian's `revenue_per_kpi` exists, add into the card HTML in-between
-    # the KPI/Revenue contribution and Optimization sections.
-
-    if self._meridian.input_data.revenue_per_kpi is not None:
-      cards.insert(
-          2, self._create_roi_breakdown_card_html(template_env, media_summary)
-      )
     return cards
 
   def _create_model_fit_card_html(
@@ -205,9 +210,12 @@ class Summarizer:
   ) -> str:
     """Creates the HTML snippet for the Model Fit card."""
     model_fit = self._model_fit
+    impact = self._kpi_or_revenue()
     expected_actual_impact_chart = formatter.ChartSpec(
         id=summary_text.EXPECTED_ACTUAL_IMPACT_CHART_ID,
-        description=summary_text.EXPECTED_ACTUAL_IMPACT_CHART_DESCRIPTION,
+        description=summary_text.EXPECTED_ACTUAL_IMPACT_CHART_DESCRIPTION_FORMAT.format(
+            impact=impact
+        ),
         chart_json=model_fit.plot_model_fit(**kwargs).to_json(),
     )
 
@@ -246,9 +254,9 @@ class Summarizer:
             national_table[c.EVALUATION_SET_VAR] == eval_set
         ]
         row_values = [
-            '{:.2f}'.format(float(sliced_table_by_eval_set[c.R_SQUARED])),
-            '{:.0%}'.format(float(sliced_table_by_eval_set[c.MAPE])),
-            '{:.0%}'.format(float(sliced_table_by_eval_set[c.WMAPE])),
+            '{:.2f}'.format(sliced_table_by_eval_set[c.R_SQUARED].item()),
+            '{:.0%}'.format(sliced_table_by_eval_set[c.MAPE].item()),
+            '{:.0%}'.format(sliced_table_by_eval_set[c.WMAPE].item()),
         ]
         return row_values
 
@@ -264,16 +272,14 @@ class Summarizer:
     else:  # No holdout_id present, so metrics are taken from 'All Data'.
       row_values = [[
           summary_text.ALL_DATA_LABEL,
-          '{:.2f}'.format(float(national_table[c.R_SQUARED])),
-          '{:.0%}'.format(float(national_table[c.MAPE])),
-          '{:.0%}'.format(float(national_table[c.WMAPE])),
+          '{:.2f}'.format(national_table[c.R_SQUARED].item()),
+          '{:.0%}'.format(national_table[c.MAPE].item()),
+          '{:.0%}'.format(national_table[c.WMAPE].item()),
       ]]
 
     return formatter.TableSpec(
         id=summary_text.PREDICTIVE_ACCURACY_TABLE_ID,
-        title=summary_text.PREDICTIVE_ACCURACY_TABLE_TITLE.format(
-            impact=impact
-        ),
+        title=summary_text.PREDICTIVE_ACCURACY_TABLE_TITLE,
         description=summary_text.PREDICTIVE_ACCURACY_TABLE_DESCRIPTION.format(
             impact=impact
         ),
@@ -298,7 +304,7 @@ class Summarizer:
     lead_channels = self._get_sorted_posterior_mean_metrics_df(
         media_summary, [c.INCREMENTAL_IMPACT]
     )[c.CHANNEL][:2]
-    roi_df = self._get_sorted_posterior_mean_metrics_df(media_summary, [c.ROI])
+    formatted_channels = [channel.title() for channel in lead_channels]
 
     spend_impact_chart = formatter.ChartSpec(
         id=summary_text.SPEND_IMPACT_CHART_ID,
@@ -314,19 +320,13 @@ class Summarizer:
         ),
         chart_json=media_summary.plot_contribution_pie_chart().to_json(),
     )
-    insights = summary_text.IMPACT_CONTRIB_INSIGHTS_FORMAT.format(
+    insights = summary_text.CHANNEL_CONTRIB_INSIGHTS_FORMAT.format(
         impact=impact,
-        lead_channels=' and '.join(lead_channels),
-        lead_roi_channel=roi_df[c.CHANNEL][0],
-        lead_roi_ratio=roi_df[c.ROI][0],
+        lead_channels=' and '.join(formatted_channels),
     )
-    if impact == c.KPI:
-      impact_contrib_card_spec = KPI_CONTRIB_CARD_SPEC
-    else:
-      impact_contrib_card_spec = REVENUE_CONTRIB_CARD_SPEC
     return formatter.create_card_html(
         template_env,
-        impact_contrib_card_spec,
+        CHANNEL_CONTRIB_CARD_SPEC,
         insights,
         [channel_drivers_chart, spend_impact_chart, impact_contribution_chart],
     )
@@ -335,6 +335,7 @@ class Summarizer:
       self,
       media_summary: visualizer.MediaSummary,
       metrics: Sequence[str],
+      ascending: bool = False,
   ) -> pd.DataFrame:
     return (
         media_summary.media_summary_metrics[metrics]
@@ -342,9 +343,21 @@ class Summarizer:
         .drop_sel(channel=c.ALL_CHANNELS)
         .to_dataframe()
         .drop(columns=[c.METRIC, c.DISTRIBUTION])
-        .sort_values(by=metrics, ascending=False)
+        .sort_values(by=metrics, ascending=ascending)
         .reset_index()
     )
+
+  def _create_performance_breakdown_card_html(
+      self,
+      template_env: jinja2.Environment,
+      media_summary: visualizer.MediaSummary,
+  ) -> str:
+    """Creates the HTML snippet for the ROI or CPIK Breakdown card."""
+    impact = self._kpi_or_revenue()
+    if impact == c.REVENUE:
+      return self._create_roi_breakdown_card_html(template_env, media_summary)
+    else:
+      return self._create_cpik_breakdown_card_html(template_env, media_summary)
 
   def _create_roi_breakdown_card_html(
       self,
@@ -352,12 +365,9 @@ class Summarizer:
       media_summary: visualizer.MediaSummary,
   ) -> str:
     """Creates the HTML snippet for the ROI Breakdown card."""
-    impact = self._kpi_or_revenue()
     roi_effectiveness_chart = formatter.ChartSpec(
         id=summary_text.ROI_EFFECTIVENESS_CHART_ID,
-        description=summary_text.ROI_EFFECTIVENESS_CHART_DESCRIPTION.format(
-            impact=impact
-        ),
+        description=summary_text.ROI_EFFECTIVENESS_CHART_DESCRIPTION,
         chart_json=media_summary.plot_roi_vs_effectiveness().to_json(),
     )
     roi_marginal_chart = formatter.ChartSpec(
@@ -367,9 +377,9 @@ class Summarizer:
     )
     roi_channel_chart = formatter.ChartSpec(
         id=summary_text.ROI_CHANNEL_CHART_ID,
-        description=summary_text.ROI_CHANNEL_CHART_DESCRIPTION,
         chart_json=media_summary.plot_roi_bar_chart().to_json(),
     )
+    roi_df = self._get_sorted_posterior_mean_metrics_df(media_summary, [c.ROI])
     effectiveness_df = self._get_sorted_posterior_mean_metrics_df(
         media_summary, [c.EFFECTIVENESS]
     )
@@ -377,9 +387,11 @@ class Summarizer:
         media_summary, [c.MROI]
     )
     insights = summary_text.ROI_BREAKDOWN_INSIGHTS_FORMAT.format(
-        lead_effectiveness_channel=effectiveness_df[c.CHANNEL][0],
-        lead_marginal_roi_channel=mroi_df[c.CHANNEL][0],
-        lead_marginal_roi_channel_value=mroi_df[c.MROI][0],
+        lead_roi_channel=roi_df[c.CHANNEL][0].title(),
+        lead_roi_ratio=roi_df[c.ROI][0],
+        lead_effectiveness_channel=effectiveness_df[c.CHANNEL][0].title(),
+        lead_mroi_channel=mroi_df[c.CHANNEL][0].title(),
+        lead_mroi_channel_value=mroi_df[c.MROI][0],
     )
     return formatter.create_card_html(
         template_env,
@@ -388,7 +400,32 @@ class Summarizer:
         [roi_effectiveness_chart, roi_marginal_chart, roi_channel_chart],
     )
 
-  def _create_budget_optimization_card_html(
+  def _create_cpik_breakdown_card_html(
+      self,
+      template_env: jinja2.Environment,
+      media_summary: visualizer.MediaSummary,
+  ) -> str:
+    """Creates the HTML snippet for the CPIK Breakdown card."""
+    cpik_channel_chart = formatter.ChartSpec(
+        id=summary_text.CPIK_CHANNEL_CHART_ID,
+        chart_json=media_summary.plot_cpik().to_json(),
+        description=summary_text.CPIK_CHANNEL_CHART_DESCRIPTION,
+    )
+    df = self._get_sorted_posterior_mean_metrics_df(
+        media_summary, [c.CPIK], ascending=True
+    )
+    insights = summary_text.CPIK_BREAKDOWN_INSIGHTS_FORMAT.format(
+        lead_cpik_channel=df[c.CHANNEL][0].title(),
+        lead_cpik_ratio=df[c.CPIK][0],
+    )
+    return formatter.create_card_html(
+        template_env,
+        CPIK_BREAKDOWN_CARD_SEPC,
+        insights,
+        [cpik_channel_chart],
+    )
+
+  def _create_response_curves_card_html(
       self,
       template_env: jinja2.Environment,
       selected_times: Sequence[str],
@@ -402,7 +439,7 @@ class Summarizer:
     charts.append(
         formatter.ChartSpec(
             id=summary_text.RESPONSE_CURVES_CHART_ID,
-            description=summary_text.RESPONSE_CURVES_CHART_DESCRIPTION.format(
+            description=summary_text.RESPONSE_CURVES_CHART_DESCRIPTION_FORMAT.format(
                 impact=impact
             ),
             chart_json=media_effects.plot_response_curves(
@@ -415,31 +452,48 @@ class Summarizer:
         )
     )
 
-    if reach_frequency is None:
-      insights = summary_text.BUDGET_OPTIMIZATION_INSIGHTS_NO_RF
-    else:
+    insights = summary_text.RESPONSE_CURVES_INSIGHTS_FORMAT.format(
+        impact=impact
+    )
+    if reach_frequency is not None:
       assert self._meridian.n_rf_channels > 0
       optimal_rf = self._select_optimal_rf_data(media_summary, reach_frequency)
       channel_name = optimal_rf[c.RF_CHANNEL].values.item()
       opt_freq = '{:.1f}'.format(optimal_rf.values.item())
+      maximize_impact = (
+          'maximize ROI'
+          if self._meridian.input_data.revenue_per_kpi is not None
+          else 'minimize CPIK'
+      )
+      maximizes_performance = (
+          'maximizes ROI'
+          if self._meridian.input_data.revenue_per_kpi is not None
+          else 'minimizes CPIK'
+      )
+      description = summary_text.OPTIMAL_FREQ_CHART_DESCRIPTION_FORMAT.format(
+          maximizes_performance=maximizes_performance,
+      )
+      insights = ' '.join([
+          insights,
+          summary_text.OPTIMAL_FREQUENCY_INSIGHTS_FORMAT.format(
+              rf_channel=channel_name,
+              opt_freq=opt_freq,
+              maximize_impact=maximize_impact,
+          ),
+      ])
 
       charts.append(
           formatter.ChartSpec(
               id=summary_text.OPTIMAL_FREQUENCY_CHART_ID,
-              description=summary_text.OPTIMAL_FREQUENCY_CHART_DESCRIPTION,
+              description=description,
               chart_json=reach_frequency.plot_optimal_frequency(
                   selected_channels=[channel_name],
               ).to_json(),
           )
       )
 
-      insights = summary_text.BUDGET_OPTIMIZATION_INSIGHTS_FORMAT.format(
-          rf_channel=channel_name,
-          opt_freq=opt_freq,
-      )
-
     return formatter.create_card_html(
-        template_env, BUDGET_OPTIMIZATION_CARD_SPEC, insights, charts
+        template_env, RESPONSE_CURVES_CARD_SPEC, insights, charts
     )
 
   def _select_optimal_rf_data(

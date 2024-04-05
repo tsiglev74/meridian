@@ -30,7 +30,7 @@ you understand the differences between these MMM projects.
 # Install Meridian
 
 Run the following command to automatically install the most recent version from
-GitHub:
+GitHub. Note that Python 3.10 or higher is required.
 
 ```sh
 $ git clone https://github.com/google/meridian.git
@@ -68,11 +68,50 @@ started quickly with using Meridian:
 
 [1]: https://developers.google.com/meridian
 [2]: https://developers.google.com/meridian/docs/basics/about-the-project
- <!-- TODO: this colab link is a placeholder -->
-[3]: https://colab.research.google.com/
+[3]: https://developers.google.com/meridian/notebook/meridian-getting-started
 [4]: https://developers.google.com/meridian/docs/user-guide/overview
 [5]: https://developers.google.com/meridian/docs/advanced-modeling/model-fit
 [6]: https://developers.google.com/meridian/docs/model-debugging/model-debugging
 [7]: https://developers.google.com/meridian/docs/migrate
 [8]: https://developers.google.com/meridian/docs/api
 [9]: https://developers.google.com/meridian/docs/reference-list
+
+## Support
+
+**Questions about methodology**: Please see the [Modeling](https://developers.google.com/meridian/docs/basics/about-the-project) tab and [Advanced considerations](https://developers.google.com/meridian/docs/advanced-modeling/control-variables) section in the technical documentation.
+
+**Issues installing or using Meridian**: Feel free to post questions in the
+[Discussions](https://github.com/google/meridian/discussions) or [Issues](https://github.com/google/meridian/issues) tabs of the Meridian GitHub repository. The Meridian team responds to
+these questions weekly in batches, so please be patient and don't reach out
+directly to your Google Account teams.
+
+**Bug reports**: Please post bug reports to the [Issues](https://github.com/google/meridian/issues)
+tab of the Meridian GitHub repository. We also encourage the community to share
+tips and advice with each other on the [Issues](https://github.com/google/meridian/issues)
+tab. When our team addresses or resolves a new bug, we will notify you through
+the comments on the issue.
+
+**Feature requests**: Please post these to the [Discussions](https://github.com/google/meridian/discussions)
+tab of the Meridian GitHub repository. We have an internal roadmap for Meridian
+development, but would love your inputs for new feature requests so that we can
+prioritize them based on the roadmap.
+
+**Pull requests**: These are appreciated but are very difficult for us to merge
+because the code in this repository is linked to Google internal systems and has
+to pass internal review. If you submit a pull request and we believe that we can
+incorporate a change in the base code, we will reach out to you directly about
+this.
+
+## Citing Meridian
+
+To cite this repository:
+
+```
+@software{meridian_github,
+  author = {Google Meridian Marketing Mix Modeling Team},
+  title = {Meridian: Marketing Mix Modeling},
+  url = {https://github.com/google/meridian},
+  version = {0.1.0},
+  year = {2024},
+}
+```

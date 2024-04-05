@@ -15,12 +15,17 @@
 """Auxiliary functions for knots calculations."""
 
 import bisect
-from collections.abc import Collection
-from typing import Sequence
+from collections.abc import Collection, Sequence
 import numpy as np
 
 
-# TODO(b/322860895)
+__all__ = [
+    'get_knot_info',
+    'l1_distance_weights',
+]
+
+
+# TODO(b/322860895): Reimplement with a more readable method.
 def _find_neighboring_knots_indices(
     times: np.ndarray,
     knot_locations: np.ndarray,
@@ -49,7 +54,7 @@ def _find_neighboring_knots_indices(
     if t <= knot_locations[0]:
       neighboring_knots_indices[t] = [0]
     elif t >= knot_locations[-1]:
-      neighboring_knots_indices[t] = [len(knot_locations)-1]
+      neighboring_knots_indices[t] = [len(knot_locations) - 1]
     else:
       bisect_index = bisect.bisect_left(knot_locations, t)
       neighboring_knots_indices[t] = [bisect_index - 1, bisect_index]
@@ -63,22 +68,22 @@ def l1_distance_weights(
 
   The two neighboring knots inform the estimate of a particular time period. The
   amount they inform the time period depends on how close (L1 distance) they
-  are. If a time point coincides with a knot location, then 100% weights is
+  are. If a time point coincides with a knot location, then 100% weight is
   given to that knot. If a time point lies outside the range of knots, then 100%
   weight is given to the nearest endpoint knot.
 
-  This function computes a `n_knots x n_times` array of weights that are used to
-  model trend and seasonality. For a given time, the array contains two non-zero
-  weights. The weights are inversely proportional to the L1 distance from the
-  given time to the neighboring knots. The two weights are normalized such that
-  they sum to 1.
+  This function computes an `(n_knots, n_times)` array of weights that are used
+  to model trend and seasonality. For a given time, the array contains two
+  non-zero weights. The weights are inversely proportional to the L1 distance
+  from the given time to the neighboring knots. The two weights are normalized
+  such that they sum to 1.
 
   Args:
     n_times: The number of time points.
     knot_locations: The location of knots within `0, 1, 2,..., (n_times-1)`.
 
   Returns:
-    A weight array with dimensions `n_knots x n_times` with values summing up
+    A weight array with dimensions `(n_knots, n_times)` with values summing up
     to 1 for each time period when summing over knots.
   """
   if knot_locations.ndim != 1:
@@ -130,22 +135,22 @@ def get_knot_info(
     n_times: The number of time periods in the data.
     knots: An optional integer or a collection of integers indicating the knots
       used to estimate time effects. When `knots` is a collection of integers,
-      the knot locations are provided by that collection (zero corresponds to a
+      the knot locations are provided by that collection. Zero corresponds to a
       knot at the first time period, one corresponds to a knot at the second
-      time, ..., and (`n_times` - 1) corresponds to a knot at the last time
-      period). When `knots` is an integer, then there are `knots` many knots
-      with locations equally spaced across the time periods (including knots at
-      zero and (`n_times` - 1). When `knots` is 1, there is a single common
-      regression coefficient used for all time periods. If `knots` is None, then
-      the numbers of knots used is equal to the number of time periods. This is
+      time, ..., and `(n_times - 1)` corresponds to a knot at the last time
+      period. When `knots` is an integer, then there are knots with locations
+      equally spaced across the time periods (including knots at zero and
+      `(n_times - 1)`. When `knots` is `1`, there is a single common regression
+      coefficient used for all time periods. If `knots` is `None`, then the
+      numbers of knots used is equal to the number of time periods. This is
       equivalent to each time period having its own regression coefficient.
-    is_national: A boolean indicator whether knot info should be adapted for a
+    is_national: A boolean indicator whether to adapt the knot information for a
       national model.
 
   Returns:
-    A tuple `(n_knots, knot_locations, weights)` with the number of knots, the
-    location of knots, and the weights used to multiply with the knot values to
-    get time-varying coefficients.
+    A tuple `(n_knots, knot_locations, weights)` with the number of knots,
+    the location of knots, and the weights used to multiply with the knot values
+    to get time-varying coefficients.
   """
 
   if isinstance(knots, int):
@@ -163,7 +168,7 @@ def get_knot_info(
       )
     n_knots = knots
     knot_locations = _get_equally_spaced_knot_locations(n_times, n_knots)
-  elif isinstance(knots, Collection) and len(knots) > 0:
+  elif isinstance(knots, Collection) and knots:
     if any(k < 0 for k in knots):
       raise ValueError('Knots must be all non-negative.')
     if any(k >= n_times for k in knots):

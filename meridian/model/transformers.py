@@ -12,14 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""This file contains data transformers for various inputs of Meridian."""
+"""Contains data transformers for various inputs of the Meridian model."""
 
 import numpy as np
 import tensorflow as tf
 
 
+__all__ = [
+    "MediaTransformer",
+    "ControlsTransformer",
+    "KpiTransformer",
+]
+
+
 class MediaTransformer:
-  """Class containing forward & inverse media transformation methods.
+  """Contains forward and inverse media transformation methods.
 
   This class stores scale factors computed from per-geo medians of the `media`
   data, normalized by the geo population.
@@ -30,13 +37,12 @@ class MediaTransformer:
       media: tf.Tensor,
       population: tf.Tensor,
   ):
-    """Initializer.
+    """`MediaTransformer` constructor.
 
     Args:
-      media: A tensor of dimension (`n_geos` x `n_media_times` x
-        `n_media_channels`) containing the media data, used to compute the scale
-        factors.
-      population: A tensor of dimension (`n_geos`) containing the population of
+      media: A tensor of dimension `(n_geos, n_media_times, n_media_channels)`
+        containing the media data, used to compute the scale factors.
+      population: A tensor of dimension `(n_geos,)` containing the population of
         each geo, used to compute the scale factors.
     """
     population_scaled_media = tf.math.divide_no_nan(
@@ -69,7 +75,7 @@ class MediaTransformer:
 
 
 class ControlsTransformer:
-  """Class containing forward & inverse controls transformation methods.
+  """Contains forward and inverse controls transformation methods.
 
   This class stores means and standard deviations of the controls data, used
   to scale a given `controls` tensor.
@@ -81,16 +87,16 @@ class ControlsTransformer:
       population: tf.Tensor,
       population_scaling_id: tf.Tensor | None = None,
   ):
-    """Initializer.
+    """`ControlsTransformer` constructor.
 
     Args:
-      controls: A tensor of dimension (`n_geos` x `n_times` x `n_controls`)
-        containing the controls data, used to compute the mean and stddev.
-      population: A tensor of dimension (`n_geos`) containing the
-        population of each geo, used to compute the scale factors.
+      controls: A tensor of dimension `(n_geos, n_times, n_controls)` containing
+        the controls data, used to compute the mean and stddev.
+      population: A tensor of dimension `(n_geos,)` containing the population of
+        each geo, used to compute the scale factors.
       population_scaling_id: An optional boolean tensor of dimension
-        (`n_controls`) indicating the control variables for which the control
-        value should be scaled by population.
+        `(n_controls,)` indicating the control variables for which the control
+        value will be scaled by population.
     """
     if population_scaling_id is not None:
       self._population_scaling_factors = tf.where(
@@ -113,7 +119,7 @@ class ControlsTransformer:
 
   @tf.function(jit_compile=True)
   def inverse(self, controls: tf.Tensor) -> tf.Tensor:
-    """Scales a given `controls` tensor back using the stored coefficients."""
+    """Scales back a given `controls` tensor using the stored coefficients."""
     scaled_controls = controls * self._stdevs + self._means
     return (
         scaled_controls * self._population_scaling_factors[:, None, :]
@@ -123,10 +129,10 @@ class ControlsTransformer:
 
 
 class KpiTransformer:
-  """Class containing forward & inverse KPI transformation methods.
+  """Contains forward and inverse KPI transformation methods.
 
-  This class stores coefficients to scale kpi, first by geo and then
-  by mean and standard deviation of kpi.
+  This class stores coefficients to scale KPI, first by geo and then
+  by mean and standard deviation of KPI.
   """
 
   def __init__(
@@ -134,12 +140,12 @@ class KpiTransformer:
       kpi: tf.Tensor,
       population: tf.Tensor,
   ):
-    """Initializer.
+    """`KpiTransformer` constructor.
 
     Args:
-      kpi: A tensor of dimension (`n_geos` x `n_times`) containing the kpi data,
+      kpi: A tensor of dimension `(n_geos, n_times)` containing the KPI data,
         used to compute the mean and stddev.
-      population: A tensor of dimension (`n_geos`) containing the population of
+      population: A tensor of dimension `(n_geos,)` containing the population of
         each geo, used to to compute the population scale factors.
     """
     self._population = population
@@ -160,7 +166,7 @@ class KpiTransformer:
 
   @tf.function(jit_compile=True)
   def inverse(self, kpi: tf.Tensor) -> tf.Tensor:
-    """Scales a given `kpi` tensor back using the stored coefficients."""
+    """Scales back a given `kpi` tensor using the stored coefficients."""
     return (
         kpi * self._population_scaled_stdev + self._population_scaled_mean
     ) * self._population[:, tf.newaxis]

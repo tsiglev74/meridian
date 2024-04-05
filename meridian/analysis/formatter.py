@@ -25,6 +25,16 @@ import jinja2
 from meridian import constants as c
 
 
+__all__ = [
+    'CardSpec',
+    'ChartSpec',
+    'TableSpec',
+    'StatsSpec',
+    'create_template_env',
+    'create_card_html',
+]
+
+
 @dataclasses.dataclass(frozen=True)
 class CardSpec:
   id: str
@@ -51,7 +61,6 @@ class TableSpec:
 class StatsSpec:
   title: str
   stat: str
-  note: str | None = None
   delta: str | None = None
 
 
@@ -101,6 +110,39 @@ def bar_chart_width(num_bars: int) -> int:
   return (c.BAR_SIZE + c.PADDING_20) * num_bars
 
 
+def compact_number(n: float, precision: int = 0, currency: str = '') -> str:
+  """Formats a number into a compact notation to the specified precision.
+
+  Ex. $15M
+
+  Args:
+    n: The number to format.
+    precision: The number of decimals to use when rounding.
+    currency: Optional string currency character. This is added at the beginning
+      of the formatted string.
+
+  Returns:
+    A formatted string.
+  """
+  millnames = ['', 'k', 'M', 'B', 'T']
+  millidx = max(
+      0,
+      min(
+          len(millnames) - 1,
+          int(math.floor(0 if n == 0 else math.log10(abs(n)) / 3)),
+      ),
+  )
+  result = '{:.{precision}f}'.format(
+      n / 10 ** (3 * millidx), precision=precision
+  )
+  suffixed = '{0}{dx}'.format(result, dx=millnames[millidx])
+
+  # For negative numbers, add the currency after the negative sign.
+  if n < 0:
+    return suffixed[0] + currency + suffixed[1:]
+  return currency + suffixed
+
+
 def compact_number_expr(value: str = 'value', n_sig_digits: int = 3) -> str:
   """Returns the Vega expression to format the datum value with SI-prefixes.
 
@@ -129,13 +171,13 @@ def format_number_text(percent_value: float, actual_value: float) -> str:
   Returns:
     String with the percentage and the compact notation of the actual value.
   """
-  return f'{round(percent_value * 100, 1)}% ({_compact_number(actual_value)})'
+  return f'{round(percent_value * 100, 1)}% ({compact_number(actual_value)})'
 
 
 def format_monetary_num(num: float) -> str:
   """Formats a number into a readable monetary value (ex. $15M, $1.2B)."""
-  precision = 1 if int(math.log10(abs(num))) % 3 == 0 else 0
-  return _compact_number(num, precision=precision, currency='$')
+  precision = 1 if num != 0 and int(math.log10(abs(num))) % 3 == 0 else 0
+  return compact_number(num, precision=precision, currency='$')
 
 
 def create_template_env() -> jinja2.Environment:
@@ -153,7 +195,7 @@ def create_card_html(
     chart_specs: Sequence[ChartSpec | TableSpec] | None = None,
     stats_specs: Sequence[StatsSpec] | None = None,
 ) -> str:
-  """Creates a card's HTML snippet given its card and charts specs."""
+  """Creates a card's HTML snippet that includes given card and charts specs."""
   insights_html = template_env.get_template('insights.html.jinja').render(
       text_html=insights
   )
@@ -196,36 +238,3 @@ def _create_charts_htmls(
     else:
       htmls.append(table_template.render(dataclasses.asdict(spec)))
   return htmls
-
-
-def _compact_number(n: float, precision: int = 0, currency: str = '') -> str:
-  """Formats a number into a compact notation to the specified precision.
-
-  Ex. $15M
-
-  Args:
-    n: The number to format.
-    precision: The number of decimals to use when rounding.
-    currency: Optional string currency character. This is added at the beginning
-      of the formatted string.
-
-  Returns:
-    A formatted string.
-  """
-  millnames = ['', 'k', 'M', 'B', 'T']
-  millidx = max(
-      0,
-      min(
-          len(millnames) - 1,
-          int(math.floor(0 if n == 0 else math.log10(abs(n)) / 3)),
-      ),
-  )
-  result = '{:.{precision}f}'.format(
-      n / 10 ** (3 * millidx), precision=precision
-  )
-  suffixed = '{0}{dx}'.format(result, dx=millnames[millidx])
-
-  # For negative numbers, add the currency after the negative sign.
-  if n < 0:
-    return suffixed[0] + currency + suffixed[1:]
-  return currency + suffixed

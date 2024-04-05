@@ -12,10 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Function definitions for Adstock/Hill calculations."""
+"""Function definitions for Adstock and Hill calculations."""
 
-from abc import ABCMeta, abstractmethod
+import abc
 import tensorflow as tf
+
+__all__ = [
+    'AdstockHillTransformer',
+    'AdstockTransformer',
+    'HillTransformer',
+]
 
 
 def _validate_arguments(
@@ -65,22 +71,23 @@ def _adstock(
 
   if n_media_times - n_times_output < max_lag:
     pad_shape = (
-        media.shape[:-2] +
-        (max_lag - (n_media_times - n_times_output)) +
-        media.shape[-1]
+        media.shape[:-2]
+        + (max_lag - (n_media_times - n_times_output))
+        + media.shape[-1]
     )
     media = tf.concat([tf.zeros(pad_shape), media], axis=-2)
 
   window_size = max_lag + 1
   window_list = tf.TensorArray(tf.float32, size=window_size)
   for i in range(window_size):
-    window_list = window_list.write(i, media[..., i:i+n_times_output, :])
+    window_list = window_list.write(i, media[..., i : i + n_times_output, :])
   windowed = window_list.stack()
   n_weights = min(window_size, n_media_times)
-  l_range = tf.range(n_weights-1, -1, -1, dtype=tf.float32)
+  l_range = tf.range(n_weights - 1, -1, -1, dtype=tf.float32)
   weights = tf.expand_dims(alpha, -1) ** l_range
   normalization_factors = tf.expand_dims(
-      (1 - alpha ** (window_size)) / (1 - alpha), -1)
+      (1 - alpha ** (window_size)) / (1 - alpha), -1
+  )
   weights = tf.divide(weights, normalization_factors)
   return tf.einsum('...mw,w...gtm->...gtm', weights, windowed)
 
@@ -112,36 +119,36 @@ def _hill(
   return t1 / (t1 + t2)
 
 
-class AdstockHillTransformer(metaclass=ABCMeta):
-  """Abstract class to compute Adstock/Hill transformation of media."""
+class AdstockHillTransformer(metaclass=abc.ABCMeta):
+  """Abstract class to compute the Adstock and Hill transformation of media."""
 
-  @abstractmethod
+  @abc.abstractmethod
   def forward(self, media: tf.Tensor) -> tf.Tensor:
-    """Computes Adstock/Hill transformation of a given media tensor."""
+    """Computes the Adstock and Hill transformation of a given media tensor."""
     pass
 
 
 class AdstockTransformer(AdstockHillTransformer):
-  """Class to compute adstocked media."""
+  """Computes the Adstock transformation of media."""
 
   def __init__(self, alpha: tf.Tensor, max_lag: int, n_times_output: int):
-    """Initializes the instance based on Adstock function parameters.
+    """Initializes this transformer based on Adstock function parameters.
 
     Args:
-      alpha: Tensor of `alpha` parameters taking values in [0, 1) with
-        dimensions `[..., n_media_channels]`. Batch dimensions (...) are
+      alpha: Tensor of `alpha` parameters taking values ≥ `[0, 1)` with
+        dimensions `[..., n_media_channels]`. Batch dimensions `(...)` are
         optional. Note that `alpha = 0` is allowed, so it is possible to put a
         point mass prior at zero (effectively no Adstock). However, `alpha = 1`
         is not allowed since the geometric sum formula is not defined, and there
         is no practical reason to have point mass at `alpha = 1`.
-      max_lag: Integer indicating the maximum number of lag periods (>= 0) to
+      max_lag: Integer indicating the maximum number of lag periods (≥ `0`) to
         include in the Adstock calculation.
       n_times_output: Integer indicating the number of time periods to include
         in the output tensor. Cannot exceed the number of time periods of the
-        media argument, i.e., `media.shape[-2]`. The output time periods
-        correspond to the most recent time periods of the media argument, i.e.
-        `media[..., -n_times_output:, :]` represents media execution of the
-        output weeks.
+        media argument, for example, `media.shape[-2]`. The output time periods
+        correspond to the most recent time periods of the media argument. For
+        example, `media[..., -n_times_output:, :]` represents the media
+        execution of the output weeks.
     """
     self._alpha = alpha
     self._max_lag = max_lag
@@ -151,24 +158,24 @@ class AdstockTransformer(AdstockHillTransformer):
     """Computes the Adstock transformation of a given `media` tensor.
 
     For geo `g`, time period `t`, and media channel `m`, Adstock is calculated
-    as adstock_{g,t,m} = sum_{i=0}^max_lag media_{g,t-i,m} alpha^i.
+    as $adstock_{g,t,m} = sum_{i=0}^max_lag media_{g,t-i,m} alpha^i$.
 
-    Note: The Hill function may be applied before or after Adstock. If Hill is
-    applied first, then Adstock media input may contain batch dimensions because
-    the transformed media tensor will be different for each posterior sample.
+    Note: The Hill function can be applied before or after Adstock. If Hill is
+    applied first, then the Adstock media input can contain batch dimensions
+    because the transformed media tensor will be different for each posterior
+    sample.
 
     Args:
       media: Tensor of media values with dimensions `[..., n_geos,
-        n_media_times, n_media_channels]`. Batch dimensions (...) are optional,
-        but if batch dimensions are included, they must match the batch
-        dimensions of `alpha`. Media is not required to have batch dimensions
-        even if `alpha` contains batch dimensions.
+        n_media_times, n_media_channels]`. Batch dimensions `(...)` are
+        optional, but if batch dimensions are included, they must match the
+        batch dimensions of `alpha`. Media is not required to have batch
+        dimensions even if `alpha` contains batch dimensions.
 
     Returns:
       Tensor with dimensions `[..., n_geos, n_times_output, n_media_channels]`
-      representing adstocked media.
+      representing Adstock transformed media.
     """
-
     return _adstock(
         media=media,
         alpha=self._alpha,
@@ -185,10 +192,10 @@ class HillTransformer(AdstockHillTransformer):
 
     Args:
       ec: Tensor with dimensions `[..., n_media_channels]`. Batch dimensions
-        (...) are optional, but if batch dimensions are included, they must
+        `(...)` are optional, but if batch dimensions are included, they must
         match the batch dimensions of `ec`.
       slope: Tensor with dimensions `[..., n_media_channels]`. Batch dimensions
-        (...) are optional, but if batch dimensions are included, they must
+        `(...)` are optional, but if batch dimensions are included, they must
         match the batch dimensions of `slope`.
     """
     self._ec = ec
@@ -197,12 +204,12 @@ class HillTransformer(AdstockHillTransformer):
   def forward(self, media: tf.Tensor) -> tf.Tensor:
     """Computes the Hill transformation of a given `media` tensor.
 
-    Calculates result of the Hill function, which accounts for diminishing
+    Calculates results for the Hill function, which accounts for the diminishing
     returns of media effects.
 
     Args:
       media: Tensor with dimensions `[..., n_geos, n_media_times,
-        n_media_channels]`. Batch dimensions (...) are optional, but if batch
+        n_media_channels]`. Batch dimensions `(...)` are optional, but if batch
         dimensions are included, they must match the batch dimensions of `slope`
         and `ec`. Media is not required to have batch dimensions even if `slope`
         and `ec` contain batch dimensions.

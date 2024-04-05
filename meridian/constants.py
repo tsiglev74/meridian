@@ -340,8 +340,6 @@ COUNT_HISTOGRAM = 'count_histogram'
 CHANNEL_TYPE = 'channel_type'
 IS_INT_TIME_UNIT = 'is_int_time_unit'
 OPTIMAL_FREQ = 'optimal_freq'
-EXPECTED_ROI_LABEL = 'Expected ROI'
-OPTIMAL_FREQ_LABEL = 'Optimal Frequency'
 CURRENT_SPEND = 'current_spend'
 
 # Media summary metrics.
@@ -349,6 +347,8 @@ SPEND = 'spend'
 IMPRESSIONS = 'impressions'
 ROI = 'roi'
 MROI = 'mroi'
+CPIK = 'cpik'
+ROI_SCALED = 'roi_scaled'
 IMPACT = 'impact'
 INCREMENTAL_IMPACT = 'incremental_impact'
 EFFECTIVENESS = 'effectiveness'
@@ -360,6 +360,7 @@ BUDGET = 'budget'
 PROFIT = 'profit'
 TOTAL_INCREMENTAL_IMPACT = 'total_incremental_impact'
 TOTAL_ROI = 'total_roi'
+TOTAL_CPIK = 'total_cpik'
 
 
 # R-hat summary metrics.
@@ -419,7 +420,7 @@ FONT_ROBOTO = 'Roboto'
 FONT_GOOGLE_SANS_DISPLAY = 'Google Sans Display'
 
 
-# Default number of max draws per chain in Analyzer.expected_resonse()
+# Default number of max draws per chain in Analyzer.expected_impact()
 DEFAULT_BATCH_SIZE = 100
 
 

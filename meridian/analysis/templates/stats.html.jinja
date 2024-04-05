@@ -17,9 +17,6 @@ limitations under the License.
 <stats>
   <stats-title>{{ title }}</stats-title>
   <stat>{{ stat }}</stat>
-  {% if note %}
-    <note>{{ note }}</note>
-  {% endif %}
   {% if delta %}
     <delta class='{{"red-text" if "-" in delta else "green-text"}}'>
       {{ delta }}
