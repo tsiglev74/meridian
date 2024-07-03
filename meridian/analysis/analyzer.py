@@ -143,7 +143,7 @@ def _scale_tensors_by_multiplier(
   return scaled_tensors
 
 
-def _mean_and_ci(
+def _mean_and_ci_dataset(
     prior: tf.Tensor,
     posterior: tf.Tensor,
     metric_name: str,
@@ -320,7 +320,7 @@ class Analyzer:
     decayed_effect_posterior_transpose = tf.transpose(
         decayed_effect_posterior, perm=[1, 2, 0, 3]
     )
-    adstock_dataset = _mean_and_ci(
+    adstock_dataset = _mean_and_ci_dataset(
         decayed_effect_prior_transpose,
         decayed_effect_posterior_transpose,
         constants.EFFECT,
@@ -1843,7 +1843,7 @@ class Analyzer:
         xr_dims=xr_dims,
         xr_coords=xr_coords,
     )
-    incremental_impact = _mean_and_ci(
+    incremental_impact = _mean_and_ci_dataset(
         prior=incremental_impact_prior,
         posterior=incremental_impact_posterior,
         metric_name=constants.INCREMENTAL_IMPACT,
@@ -2699,7 +2699,7 @@ class Analyzer:
         self._meridian.inference_data.posterior[slope].values,
     ).forward(expanded_linspace)[:, :, 0, :, :]
 
-    hill_dataset = _mean_and_ci(
+    hill_dataset = _mean_and_ci_dataset(
         hill_vals_prior,
         hill_vals_posterior,
         constants.HILL_SATURATION_LEVEL,
@@ -2913,7 +2913,7 @@ class Analyzer:
       spend_with_total: tf.Tensor,
   ) -> xr.Dataset:
     # TODO(b/304834270): Support calibration_period_bool.
-    return _mean_and_ci(
+    return _mean_and_ci_dataset(
         prior=incremental_revenue_prior / spend_with_total,
         posterior=incremental_revenue_posterior / spend_with_total,
         metric_name=constants.ROI,
@@ -2979,7 +2979,7 @@ class Analyzer:
     mroi_posterior_concat = tf.concat(
         [mroi_posterior, mroi_posterior_total[..., None]], axis=-1
     )
-    return _mean_and_ci(
+    return _mean_and_ci_dataset(
         prior=mroi_prior_concat,
         posterior=mroi_posterior_concat,
         metric_name=constants.MROI,
@@ -3034,7 +3034,7 @@ class Analyzer:
       xr_coords: Mapping[str, tuple[Sequence[str], Sequence[str]]],
       confidence_level: float,
   ) -> xr.Dataset:
-    return _mean_and_ci(
+    return _mean_and_ci_dataset(
         prior=incremental_impact_prior / impressions_with_total,
         posterior=incremental_impact_posterior / impressions_with_total,
         metric_name=constants.EFFECTIVENESS,
@@ -3052,7 +3052,7 @@ class Analyzer:
       xr_coords: Mapping[str, tuple[Sequence[str], Sequence[str]]],
       confidence_level: float,
   ) -> xr.Dataset:
-    return _mean_and_ci(
+    return _mean_and_ci_dataset(
         prior=spend_with_total / incremental_kpi_prior,
         posterior=spend_with_total / incremental_kpi_posterior,
         metric_name=constants.CPIK,
@@ -3076,7 +3076,7 @@ class Analyzer:
     mean_expected_impact_posterior = tf.reduce_mean(
         expected_impact_posterior, (0, 1)
     )
-    return _mean_and_ci(
+    return _mean_and_ci_dataset(
         prior=incremental_impact_prior
         / mean_expected_impact_prior[..., None]
         * 100,
