@@ -1885,8 +1885,10 @@ class Meridian:
 
     Throws:
       MCMCOOMError: If the model is out of memory. Try reducing `n_keep` or pass
-        a list of integers as `n_chains` to sample chains serially (see
-        https://developers.google.com/meridian/docs/advanced-modeling/model-debugging#gpu-oom-error).
+        a list of integers as `n_chains` to sample chains serially. For more
+        information, see
+        [ResourceExhaustedError when running Meridian.sample_posterior]
+        (https://developers.google.com/meridian/docs/advanced-modeling/model-debugging#gpu-oom-error).
     """
     seed = tfp.random.sanitize_seed(seed) if seed else None
     n_chains_list = [n_chains] if isinstance(n_chains, int) else n_chains
