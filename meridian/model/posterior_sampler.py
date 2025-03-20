@@ -489,38 +489,7 @@ class PosteriorMCMCSampler:
         ) from error
       states.append(mcmc.all_states._asdict())
       traces.append(mcmc.trace)
-      # TODO
-      print(f"\n\n\n BATCH {num}")
-      tmp_state = mcmc.all_states._asdict()
-      tmp_mcmc_states = {
-          k: tf.einsum(
-              "ij...->ji...",
-              tmp_state[k][n_burnin:, ...],
-          )
-          for k in tmp_state.keys()
-          if k not in constants.UNSAVED_PARAMETERS
-      }
-      rhat = pd.DataFrame()
-      vis_mcmc_states = {k: v.values for k, v in tmp_mcmc_states.items()}
-      for k, v in tfp.mcmc.potential_scale_reduction(
-          {k: tf.einsum("ij...->ji...", v) for k, v in vis_mcmc_states.items()}
-      ).items():
-        rhat_temp = v.numpy().flatten()
-        rhat = pd.concat([
-            rhat,
-            pd.DataFrame({
-                constants.PARAMETER: np.repeat(k, len(rhat_temp)),
-                constants.RHAT: rhat_temp,
-            }),
-        ])
-
-      # If the MCMC sampling fails, the r-hat value calculated will be very large.
-      if (rhat[constants.RHAT] > 1e10).any():
-        max_rhat = max(rhat[constants.RHAT])
-        print(f" MAX RHAT: {max_rhat}")
-      print(f" ALL RHATS: {rhat[constants.RHAT]}")
-      # TODO
-
+      
     mcmc_states = {
         k: tf.einsum(
             "ij...->ji...",
