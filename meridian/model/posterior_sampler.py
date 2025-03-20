@@ -481,6 +481,10 @@ class PosteriorMCMCSampler:
             seed=seed,
             **pins,
         )
+        print(" NEW SEED VERSION")
+        print(f" SEED before: {seed}")
+        seed = [x + 1 for x in (seed or [0, 0])]
+        print(f" SEED after: {seed}")
       except tf.errors.ResourceExhaustedError as error:
         raise MCMCOOMError(
             "ERROR: Out of memory. Try reducing `n_keep` or pass a list of"
