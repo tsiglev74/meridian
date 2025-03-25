@@ -1457,6 +1457,39 @@ class PosteriorMCMCSamplerTest(
           seed=seed,
       )
 
+  def test_sample_posterior_seed_increment(self):
+    n_chains_list = [2, 3]
+    initial_seed = 123
+    expected_seeds = [initial_seed, initial_seed + 1]
+    mock_sample_posterior = self.enter_context(
+        mock.patch.object(
+            posterior_sampler,
+            "_xla_windowed_adaptive_nuts",
+            autospec=True,
+            return_value=collections.namedtuple(
+                "StatesAndTrace", ["all_states", "trace"]
+            )(
+                all_states=self.test_posterior_states_media_and_rf,
+                trace=self.test_trace,
+            ),
+        )
+    )
+    model_spec = spec.ModelSpec()
+    meridian = model.Meridian(
+        input_data=self.short_input_data_with_media_and_rf,
+        model_spec=model_spec,
+    )
+    meridian.sample_posterior(
+        n_chains=n_chains_list,
+        n_adapt=self._N_ADAPT,
+        n_burnin=self._N_BURNIN,
+        n_keep=self._N_KEEP,
+        seed=initial_seed,
+    )
+    calls = mock_sample_posterior.call_args_list
+    self.assertEqual(len(calls), len(n_chains_list))
+    for i, (args, kwargs) in enumerate(calls):
+      self.assertEqual(kwargs["seed"], tfp.random.sanitize_seed(expected_seeds[i]))
 
 if __name__ == "__main__":
   absltest.main()
