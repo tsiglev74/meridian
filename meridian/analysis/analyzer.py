@@ -87,6 +87,32 @@ class DataTensors:
   control_names: Optional[Sequence[str]] = None
   non_media_names: Optional[Sequence[str]] = None
 
+  def __init__(
+      self,
+      kpi: Tensor,
+      media: Optional[Tensor] = None,
+      media_spend: Optional[Tensor] = None,
+      controls: Optional[Tensor] = None,
+      non_media_treatments: Optional[Tensor] = None,
+      population: Optional[Tensor] = None,
+      time: Optional[Tensor] = None,
+      geo: Optional[Tensor] = None,
+      media_names: Optional[Sequence[str]] = None,
+      control_names: Optional[Sequence[str]] = None,
+      non_media_names: Optional[Sequence[str]] = None,
+  ):
+    self.kpi = kpi
+    self.media = media
+    self.media_spend = media_spend
+    self.controls = controls
+    self.non_media_treatments = non_media_treatments
+    self.population = population
+    self.time = time
+    self.geo = geo
+    self.media_names = media_names
+    self.control_names = control_names
+    self.non_media_names = non_media_names
+
   def __validate__(self):
     """Validates the data tensors."""
     if self.kpi is None:
@@ -134,6 +160,28 @@ class DistributionTensors:
   gamma_c: Optional[Tensor] = None
   gamma_n: Optional[Tensor] = None
   sigma: Tensor
+
+  def __init__(
+      self,
+      knot_values: Tensor,
+      tau_g: Tensor,
+      sigma: Tensor,
+      beta_m: Optional[Tensor] = None,
+      beta_rf: Optional[Tensor] = None,
+      beta_om: Optional[Tensor] = None,
+      beta_orf: Optional[Tensor] = None,
+      gamma_c: Optional[Tensor] = None,
+      gamma_n: Optional[Tensor] = None,
+  ):
+    self.knot_values = knot_values
+    self.tau_g = tau_g
+    self.sigma = sigma
+    self.beta_m = beta_m
+    self.beta_rf = beta_rf
+    self.beta_om = beta_om
+    self.beta_orf = beta_orf
+    self.gamma_c = gamma_c
+    self.gamma_n = gamma_n
 
   def __validate__(self):
     """Validates the distribution tensors."""
