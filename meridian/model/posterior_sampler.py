@@ -20,8 +20,19 @@ from typing import TYPE_CHECKING
 import arviz as az
 from meridian import constants
 import numpy as np
-import tensorflow as tf
-import tensorflow_probability as tfp
+from meridian.backend import (
+    Tensor,
+    Distribution,
+    deterministic,
+    normal,
+    sample,
+    function,
+    sanitize_seed,
+    windowed_adaptive_nuts,
+    concat,
+    einsum,
+    broadcast_to,
+)
 
 if TYPE_CHECKING:
   from meridian.model import model  # pylint: disable=g-bad-import-order,g-import-not-at-top
@@ -43,8 +54,8 @@ class MCMCOOMError(Exception):
 
 
 def _get_tau_g(
-    tau_g_excl_baseline: tf.Tensor, baseline_geo_idx: int
-) -> tfp.distributions.Distribution:
+    tau_g_excl_baseline: Tensor, baseline_geo_idx: int
+) -> Distribution:
   """Computes `tau_g` from `tau_g_excl_baseline`.
 
   This function computes `tau_g` by inserting a column of zeros at the
@@ -62,21 +73,21 @@ def _get_tau_g(
   """
   rank = len(tau_g_excl_baseline.shape)
   shape = tau_g_excl_baseline.shape[:-1] + [1] if rank != 1 else 1
-  tau_g = tf.concat(
+  tau_g = concat(
       [
           tau_g_excl_baseline[..., :baseline_geo_idx],
-          tf.zeros(shape, dtype=tau_g_excl_baseline.dtype),
+          zeros(shape, dtype=tau_g_excl_baseline.dtype),
           tau_g_excl_baseline[..., baseline_geo_idx:],
       ],
       axis=rank - 1,
   )
-  return tfp.distributions.Deterministic(tau_g, name="tau_g")
+  return deterministic(tau_g, name="tau_g")
 
 
-@tf.function(autograph=False, jit_compile=True)
+@function(autograph=False, jit_compile=True)
 def _xla_windowed_adaptive_nuts(**kwargs):
   """XLA wrapper for windowed_adaptive_nuts."""
-  return tfp.experimental.mcmc.windowed_adaptive_nuts(**kwargs)
+  return windowed_adaptive_nuts(**kwargs)
 
 
 class PosteriorMCMCSampler:
@@ -85,7 +96,7 @@ class PosteriorMCMCSampler:
   def __init__(self, meridian: "model.Meridian"):
     self._meridian = meridian
 
-  def _get_joint_dist_unpinned(self) -> tfp.distributions.Distribution:
+  def _get_joint_dist_unpinned(self) -> Distribution:
     """Returns a `JointDistributionCoroutineAutoBatched` function for MCMC."""
     mmm = self._meridian
     mmm.populate_cached_properties()
@@ -121,7 +132,7 @@ class PosteriorMCMCSampler:
         mmm.prior_sampler_callable.get_roi_prior_beta_rf_value
     )
 
-    @tfp.distributions.JointDistributionCoroutineAutoBatched
+    @Distribution
     def joint_dist_unpinned():
       # Sample directly from prior.
       knot_values = yield prior_broadcast.knot_values
@@ -129,7 +140,7 @@ class PosteriorMCMCSampler:
       xi_c = yield prior_broadcast.xi_c
       sigma = yield prior_broadcast.sigma
 
-      tau_g_excl_baseline = yield tfp.distributions.Sample(
+      tau_g_excl_baseline = yield sample(
           prior_broadcast.tau_g_excl_baseline,
           name=constants.TAU_G_EXCL_BASELINE,
       )
@@ -137,8 +148,8 @@ class PosteriorMCMCSampler:
           tau_g_excl_baseline=tau_g_excl_baseline,
           baseline_geo_idx=baseline_geo_idx,
       )
-      mu_t = yield tfp.distributions.Deterministic(
-          tf.einsum(
+      mu_t = yield deterministic(
+          einsum(
               "k,kt->t",
               knot_values,
               tf.convert_to_tensor(knot_info.weights),
@@ -147,17 +158,17 @@ class PosteriorMCMCSampler:
       )
 
       tau_gt = tau_g[:, tf.newaxis] + mu_t
-      combined_media_transformed = tf.zeros(
+      combined_media_transformed = zeros(
           shape=(n_geos, n_times, 0), dtype=tf.float32
       )
-      combined_beta = tf.zeros(shape=(n_geos, 0), dtype=tf.float32)
+      combined_beta = zeros(shape=(n_geos, 0), dtype=tf.float32)
       if media_tensors.media is not None:
         alpha_m = yield prior_broadcast.alpha_m
         ec_m = yield prior_broadcast.ec_m
         eta_m = yield prior_broadcast.eta_m
         slope_m = yield prior_broadcast.slope_m
-        beta_gm_dev = yield tfp.distributions.Sample(
-            tfp.distributions.Normal(0, 1),
+        beta_gm_dev = yield sample(
+            normal(0, 1),
             [n_geos, n_media_channels],
             name=constants.BETA_GM_DEV,
         )
@@ -182,7 +193,7 @@ class PosteriorMCMCSampler:
               slope_m,
               media_transformed,
           )
-          beta_m = yield tfp.distributions.Deterministic(
+          beta_m = yield deterministic(
               beta_m_value, name=constants.BETA_M
           )
         else:
@@ -194,21 +205,21 @@ class PosteriorMCMCSampler:
             if media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
             else tf.math.exp(beta_eta_combined)
         )
-        beta_gm = yield tfp.distributions.Deterministic(
+        beta_gm = yield deterministic(
             beta_gm_value, name=constants.BETA_GM
         )
-        combined_media_transformed = tf.concat(
+        combined_media_transformed = concat(
             [combined_media_transformed, media_transformed], axis=-1
         )
-        combined_beta = tf.concat([combined_beta, beta_gm], axis=-1)
+        combined_beta = concat([combined_beta, beta_gm], axis=-1)
 
       if rf_tensors.reach is not None:
         alpha_rf = yield prior_broadcast.alpha_rf
         ec_rf = yield prior_broadcast.ec_rf
         eta_rf = yield prior_broadcast.eta_rf
         slope_rf = yield prior_broadcast.slope_rf
-        beta_grf_dev = yield tfp.distributions.Sample(
-            tfp.distributions.Normal(0, 1),
+        beta_grf_dev = yield sample(
+            normal(0, 1),
             [n_geos, n_rf_channels],
             name=constants.BETA_GRF_DEV,
         )
@@ -235,7 +246,7 @@ class PosteriorMCMCSampler:
               slope_rf,
               rf_transformed,
           )
-          beta_rf = yield tfp.distributions.Deterministic(
+          beta_rf = yield deterministic(
               beta_rf_value,
               name=constants.BETA_RF,
           )
@@ -248,21 +259,21 @@ class PosteriorMCMCSampler:
             if media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
             else tf.math.exp(beta_eta_combined)
         )
-        beta_grf = yield tfp.distributions.Deterministic(
+        beta_grf = yield deterministic(
             beta_grf_value, name=constants.BETA_GRF
         )
-        combined_media_transformed = tf.concat(
+        combined_media_transformed = concat(
             [combined_media_transformed, rf_transformed], axis=-1
         )
-        combined_beta = tf.concat([combined_beta, beta_grf], axis=-1)
+        combined_beta = concat([combined_beta, beta_grf], axis=-1)
 
       if organic_media_tensors.organic_media is not None:
         alpha_om = yield prior_broadcast.alpha_om
         ec_om = yield prior_broadcast.ec_om
         eta_om = yield prior_broadcast.eta_om
         slope_om = yield prior_broadcast.slope_om
-        beta_gom_dev = yield tfp.distributions.Sample(
-            tfp.distributions.Normal(0, 1),
+        beta_gom_dev = yield sample(
+            normal(0, 1),
             [n_geos, n_organic_media_channels],
             name=constants.BETA_GOM_DEV,
         )
@@ -280,21 +291,21 @@ class PosteriorMCMCSampler:
             if media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
             else tf.math.exp(beta_eta_combined)
         )
-        beta_gom = yield tfp.distributions.Deterministic(
+        beta_gom = yield deterministic(
             beta_gom_value, name=constants.BETA_GOM
         )
-        combined_media_transformed = tf.concat(
+        combined_media_transformed = concat(
             [combined_media_transformed, organic_media_transformed], axis=-1
         )
-        combined_beta = tf.concat([combined_beta, beta_gom], axis=-1)
+        combined_beta = concat([combined_beta, beta_gom], axis=-1)
 
       if organic_rf_tensors.organic_reach is not None:
         alpha_orf = yield prior_broadcast.alpha_orf
         ec_orf = yield prior_broadcast.ec_orf
         eta_orf = yield prior_broadcast.eta_orf
         slope_orf = yield prior_broadcast.slope_orf
-        beta_gorf_dev = yield tfp.distributions.Sample(
-            tfp.distributions.Normal(0, 1),
+        beta_gorf_dev = yield sample(
+            normal(0, 1),
             [n_geos, n_organic_rf_channels],
             name=constants.BETA_GORF_DEV,
         )
@@ -314,41 +325,41 @@ class PosteriorMCMCSampler:
             if media_effects_dist == constants.MEDIA_EFFECTS_NORMAL
             else tf.math.exp(beta_eta_combined)
         )
-        beta_gorf = yield tfp.distributions.Deterministic(
+        beta_gorf = yield deterministic(
             beta_gorf_value, name=constants.BETA_GORF
         )
-        combined_media_transformed = tf.concat(
+        combined_media_transformed = concat(
             [combined_media_transformed, organic_rf_transformed], axis=-1
         )
-        combined_beta = tf.concat([combined_beta, beta_gorf], axis=-1)
+        combined_beta = concat([combined_beta, beta_gorf], axis=-1)
 
-      sigma_gt = tf.transpose(tf.broadcast_to(sigma, [n_times, n_geos]))
-      gamma_gc_dev = yield tfp.distributions.Sample(
-          tfp.distributions.Normal(0, 1),
+      sigma_gt = tf.transpose(broadcast_to(sigma, [n_times, n_geos]))
+      gamma_gc_dev = yield sample(
+          normal(0, 1),
           [n_geos, n_controls],
           name=constants.GAMMA_GC_DEV,
       )
-      gamma_gc = yield tfp.distributions.Deterministic(
+      gamma_gc = yield deterministic(
           gamma_c + xi_c * gamma_gc_dev, name=constants.GAMMA_GC
       )
       y_pred_combined_media = (
           tau_gt
-          + tf.einsum("gtm,gm->gt", combined_media_transformed, combined_beta)
-          + tf.einsum("gtc,gc->gt", controls_scaled, gamma_gc)
+          + einsum("gtm,gm->gt", combined_media_transformed, combined_beta)
+          + einsum("gtc,gc->gt", controls_scaled, gamma_gc)
       )
 
       if mmm.non_media_treatments is not None:
         gamma_n = yield prior_broadcast.gamma_n
         xi_n = yield prior_broadcast.xi_n
-        gamma_gn_dev = yield tfp.distributions.Sample(
-            tfp.distributions.Normal(0, 1),
+        gamma_gn_dev = yield sample(
+            normal(0, 1),
             [n_geos, n_non_media_channels],
             name=constants.GAMMA_GN_DEV,
         )
-        gamma_gn = yield tfp.distributions.Deterministic(
+        gamma_gn = yield deterministic(
             gamma_n + xi_n * gamma_gn_dev, name=constants.GAMMA_GN
         )
-        y_pred = y_pred_combined_media + tf.einsum(
+        y_pred = y_pred_combined_media + einsum(
             "gtn,gn->gt", non_media_treatments_scaled, gamma_gn
         )
       else:
@@ -363,15 +374,15 @@ class PosteriorMCMCSampler:
         y_pred_holdout = tf.where(holdout_id, 0.0, y_pred)
         test_sd = tf.cast(1.0 / np.sqrt(2.0 * np.pi), tf.float32)
         sigma_gt_holdout = tf.where(holdout_id, test_sd, sigma_gt)
-        yield tfp.distributions.Normal(
+        yield normal(
             y_pred_holdout, sigma_gt_holdout, name="y"
         )
       else:
-        yield tfp.distributions.Normal(y_pred, sigma_gt, name="y")
+        yield normal(y_pred, sigma_gt, name="y")
 
     return joint_dist_unpinned
 
-  def _get_joint_dist(self) -> tfp.distributions.Distribution:
+  def _get_joint_dist(self) -> Distribution:
     mmm = self._meridian
     y = (
         tf.where(mmm.holdout_id, 0.0, mmm.kpi_scaled)
@@ -386,7 +397,7 @@ class PosteriorMCMCSampler:
       n_adapt: int,
       n_burnin: int,
       n_keep: int,
-      current_state: Mapping[str, tf.Tensor] | None = None,
+      current_state: Mapping[str, Tensor] | None = None,
       init_step_size: int | None = None,
       dual_averaging_kwargs: Mapping[str, int] | None = None,
       max_tree_depth: int = 10,
@@ -465,7 +476,7 @@ class PosteriorMCMCSampler:
           " [tfp.random.sanitize_seed](https://www.tensorflow.org/probability/api_docs/python/tfp/random/sanitize_seed)"
           " for details."
       )
-    seed = tfp.random.sanitize_seed(seed) if seed is not None else None
+    seed = sanitize_seed(seed) if seed is not None else None
     n_chains_list = [n_chains] if isinstance(n_chains, int) else n_chains
     total_chains = np.sum(n_chains_list)
 

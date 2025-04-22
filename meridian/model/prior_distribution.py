@@ -25,8 +25,16 @@ from typing import Any
 import warnings
 from meridian import constants
 import numpy as np
-import tensorflow as tf
-import tensorflow_probability as tfp
+from meridian.backend import (
+    Distribution,
+    deterministic,
+    half_normal,
+    log_normal,
+    normal,
+    truncated_normal,
+    uniform,
+    shift,
+)
 
 
 __all__ = [

@@ -15,11 +15,19 @@
 """Structures and functions for manipulating media value data and tensors."""
 
 import dataclasses
+from collections.abc import Mapping
+from typing import Optional
 from meridian import constants
+from meridian.backend import (
+    Tensor,
+    cast,
+    convert_to_tensor,
+    experimental_extension_type,
+    zeros_like,
+)
 from meridian.data import input_data as data
 from meridian.model import spec
 from meridian.model import transformers
-import tensorflow as tf
 
 
 __all__ = [
@@ -57,13 +65,13 @@ class MediaTensors:
       this `media_spend_counterfactual` tensor.
   """
 
-  media: tf.Tensor | None = None
-  media_spend: tf.Tensor | None = None
+  media: Tensor | None = None
+  media_spend: Tensor | None = None
   media_transformer: transformers.MediaTransformer | None = None
-  media_scaled: tf.Tensor | None = None
-  media_counterfactual: tf.Tensor | None = None
-  media_counterfactual_scaled: tf.Tensor | None = None
-  media_spend_counterfactual: tf.Tensor | None = None
+  media_scaled: Tensor | None = None
+  media_counterfactual: Tensor | None = None
+  media_counterfactual_scaled: Tensor | None = None
+  media_spend_counterfactual: Tensor | None = None
 
 
 def build_media_tensors(
@@ -75,10 +83,10 @@ def build_media_tensors(
     return MediaTensors()
 
   # Derive and set media tensors from media values in the input data.
-  media = tf.convert_to_tensor(input_data.media, dtype=tf.float32)
-  media_spend = tf.convert_to_tensor(input_data.media_spend, dtype=tf.float32)
+  media = convert_to_tensor(input_data.media, dtype=float)
+  media_spend = convert_to_tensor(input_data.media_spend, dtype=float)
   media_transformer = transformers.MediaTransformer(
-      media, tf.convert_to_tensor(input_data.population, dtype=tf.float32)
+      media, convert_to_tensor(input_data.population, dtype=float)
   )
   media_scaled = media_transformer.forward(media)
 
@@ -97,14 +105,21 @@ def build_media_tensors(
     media_counterfactual_scaled = factor * media_scaled
     media_spend_counterfactual = factor * media_spend
   else:
-    media_counterfactual = tf.where(
-        model_spec.roi_calibration_period, factor * media, media
+    media_counterfactual = cast(
+        media,
+        model_spec.roi_calibration_period,
+        factor * media,
+        media,
     )
-    media_counterfactual_scaled = tf.where(
-        model_spec.roi_calibration_period, factor * media_scaled, media_scaled
+    media_counterfactual_scaled = cast(
+        media_scaled,
+        model_spec.roi_calibration_period,
+        factor * media_scaled,
+        media_scaled,
     )
     n_times = len(input_data.time)
-    media_spend_counterfactual = tf.where(
+    media_spend_counterfactual = cast(
+        media_spend,
         model_spec.roi_calibration_period[..., -n_times:, :],
         factor * media_spend,
         media_spend,
@@ -137,11 +152,11 @@ class OrganicMediaTensors:
       counterfactual scaled values.
   """
 
-  organic_media: tf.Tensor | None = None
+  organic_media: Tensor | None = None
   organic_media_transformer: transformers.MediaTransformer | None = None
-  organic_media_scaled: tf.Tensor | None = None
-  organic_media_counterfactual: tf.Tensor | None = None
-  organic_media_counterfactual_scaled: tf.Tensor | None = None
+  organic_media_scaled: Tensor | None = None
+  organic_media_counterfactual: Tensor | None = None
+  organic_media_counterfactual_scaled: Tensor | None = None
 
 
 def build_organic_media_tensors(
@@ -152,16 +167,16 @@ def build_organic_media_tensors(
     return OrganicMediaTensors()
 
   # Derive and set media tensors from media values in the input data.
-  organic_media = tf.convert_to_tensor(
-      input_data.organic_media, dtype=tf.float32
+  organic_media = convert_to_tensor(
+      input_data.organic_media, dtype=float
   )
   organic_media_transformer = transformers.MediaTransformer(
       organic_media,
-      tf.convert_to_tensor(input_data.population, dtype=tf.float32),
+      convert_to_tensor(input_data.population, dtype=float),
   )
   organic_media_scaled = organic_media_transformer.forward(organic_media)
-  organic_media_counterfactual = tf.zeros_like(organic_media)
-  organic_media_counterfactual_scaled = tf.zeros_like(organic_media_scaled)
+  organic_media_counterfactual = zeros_like(organic_media)
+  organic_media_counterfactual_scaled = zeros_like(organic_media_scaled)
 
   return OrganicMediaTensors(
       organic_media=organic_media,
@@ -196,14 +211,14 @@ class RfTensors:
       `rf_spend_counterfactual` tensor.
   """
 
-  reach: tf.Tensor | None = None
-  frequency: tf.Tensor | None = None
-  rf_spend: tf.Tensor | None = None
+  reach: Tensor | None = None
+  frequency: Tensor | None = None
+  rf_spend: Tensor | None = None
   reach_transformer: transformers.MediaTransformer | None = None
-  reach_scaled: tf.Tensor | None = None
-  reach_counterfactual: tf.Tensor | None = None
-  reach_counterfactual_scaled: tf.Tensor | None = None
-  rf_spend_counterfactual: tf.Tensor | None = None
+  reach_scaled: Tensor | None = None
+  reach_counterfactual: Tensor | None = None
+  reach_counterfactual_scaled: Tensor | None = None
+  rf_spend_counterfactual: Tensor | None = None
 
 
 def build_rf_tensors(
@@ -214,11 +229,11 @@ def build_rf_tensors(
   if input_data.reach is None:
     return RfTensors()
 
-  reach = tf.convert_to_tensor(input_data.reach, dtype=tf.float32)
-  frequency = tf.convert_to_tensor(input_data.frequency, dtype=tf.float32)
-  rf_spend = tf.convert_to_tensor(input_data.rf_spend, dtype=tf.float32)
+  reach = convert_to_tensor(input_data.reach, dtype=float)
+  frequency = convert_to_tensor(input_data.frequency, dtype=float)
+  rf_spend = convert_to_tensor(input_data.rf_spend, dtype=float)
   reach_transformer = transformers.MediaTransformer(
-      reach, tf.convert_to_tensor(input_data.population, dtype=tf.float32)
+      reach, convert_to_tensor(input_data.population, dtype=float)
   )
   reach_scaled = reach_transformer.forward(reach)
 
@@ -226,18 +241,25 @@ def build_rf_tensors(
   # `roi_rf` is the same, regardless of whether `roi_rf` represents ROI or
   # marginal ROI by reach.
   if model_spec.rf_roi_calibration_period is None:
-    reach_counterfactual = tf.zeros_like(reach)
-    reach_counterfactual_scaled = tf.zeros_like(reach_scaled)
-    rf_spend_counterfactual = tf.zeros_like(rf_spend)
+    reach_counterfactual = zeros_like(reach)
+    reach_counterfactual_scaled = zeros_like(reach_scaled)
+    rf_spend_counterfactual = zeros_like(rf_spend)
   else:
-    reach_counterfactual = tf.where(
-        model_spec.rf_roi_calibration_period, 0, reach
+    reach_counterfactual = cast(
+        reach,
+        model_spec.rf_roi_calibration_period,
+        0,
+        reach,
     )
-    reach_counterfactual_scaled = tf.where(
-        model_spec.rf_roi_calibration_period, 0, reach_scaled
+    reach_counterfactual_scaled = cast(
+        reach_scaled,
+        model_spec.rf_roi_calibration_period,
+        0,
+        reach_scaled,
     )
     n_times = len(input_data.time)
-    rf_spend_counterfactual = tf.where(
+    rf_spend_counterfactual = cast(
+        rf_spend,
         model_spec.rf_roi_calibration_period[..., -n_times:, :],
         0,
         rf_spend,
@@ -272,12 +294,12 @@ class OrganicRfTensors:
       counterfactual scaled values.
   """
 
-  organic_reach: tf.Tensor | None = None
-  organic_frequency: tf.Tensor | None = None
+  organic_reach: Tensor | None = None
+  organic_frequency: Tensor | None = None
   organic_reach_transformer: transformers.MediaTransformer | None = None
-  organic_reach_scaled: tf.Tensor | None = None
-  organic_reach_counterfactual: tf.Tensor | None = None
-  organic_reach_counterfactual_scaled: tf.Tensor | None = None
+  organic_reach_scaled: Tensor | None = None
+  organic_reach_counterfactual: Tensor | None = None
+  organic_reach_counterfactual_scaled: Tensor | None = None
 
 
 def build_organic_rf_tensors(
@@ -287,19 +309,19 @@ def build_organic_rf_tensors(
   if input_data.organic_reach is None:
     return OrganicRfTensors()
 
-  organic_reach = tf.convert_to_tensor(
-      input_data.organic_reach, dtype=tf.float32
+  organic_reach = convert_to_tensor(
+      input_data.organic_reach, dtype=float
   )
-  organic_frequency = tf.convert_to_tensor(
-      input_data.organic_frequency, dtype=tf.float32
+  organic_frequency = convert_to_tensor(
+      input_data.organic_frequency, dtype=float
   )
   organic_reach_transformer = transformers.MediaTransformer(
       organic_reach,
-      tf.convert_to_tensor(input_data.population, dtype=tf.float32),
+      convert_to_tensor(input_data.population, dtype=float),
   )
   organic_reach_scaled = organic_reach_transformer.forward(organic_reach)
-  organic_reach_counterfactual = tf.zeros_like(organic_reach)
-  organic_reach_counterfactual_scaled = tf.zeros_like(organic_reach_scaled)
+  organic_reach_counterfactual = zeros_like(organic_reach)
+  organic_reach_counterfactual_scaled = zeros_like(organic_reach_scaled)
 
   return OrganicRfTensors(
       organic_reach=organic_reach,
