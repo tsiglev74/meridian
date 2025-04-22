@@ -1,0 +1,34 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+1.  **Isolate New TF/TFP Usage:** When adding new features or modifying existing ones, actively avoid introducing *new* direct dependencies on `tensorflow` or `tensorflow_probability` APIs, especially outside the core `meridian/model/` directory. Prioritize using standard Python/NumPy/SciPy or abstractions where possible. If TF/TFP is necessary for a *new* core modeling feature, encapsulate it tightly.
+    *   *Rationale:* Limits the scope of the future migration effort.
+
+2.  **Mark Core TF/TFP Logic:** For any code block heavily relying on `tfp.distributions`, `tfp.mcmc`, complex `tf.linalg`, `@tf.function`, or custom TF ops (especially within `meridian/model/`), add a `# TODO(migration): Abstract/Replace TFP/TF usage: [brief description]` comment. Detail the specific TF/TFP functionality used (e.g., "NUTS sampling", "LogNormal distribution", "JIT compilation for adstock").
+    *   *Rationale:* Creates a clear inventory for migration planning directly in the code.
+
+3.  **Prefer Standard Types at Boundaries:** Refine type hints for function/method arguments and return values currently using `tf.Tensor` or TFP types, *especially* at the boundaries between `model`, `analysis`, and `data` modules. Aim for more abstract types like `np.ndarray`, `Sequence`, `Mapping`, `xr.Dataset`, or custom data classes where TF/TFP is an implementation detail, not a required interface.
+    *   *Rationale:* Decouples modules and makes replacing the TF/TFP backend easier.
+
+4.  **Replace TF Utilities with NumPy/Standard Lib:** Where `tensorflow` provides utility functions (e.g., `tf.ones`, `tf.zeros_like`, `tf.transpose`, `tf.concat`, basic math ops like `tf.reduce_sum`), replace them with equivalent NumPy or standard library functions (`np.ones`, `np.zeros_like`, `np.transpose`, `np.concatenate`, `np.sum`) *unless* the TF function is critical for performance within a `@tf.function` block or GPU execution.
+    *   *Rationale:* Reduces trivial TF dependencies, simplifying the migration.
+
+5.  **Design Agnostic Data Structures:** Analyze data structures returned by sampling (`InferenceData` usage in `analyzer.py`, `xr.Dataset` creation). Ensure these structures, or the functions processing them, are designed to be backend-agnostic or easily adaptable when the TF/TFP sampling backend is replaced. Avoid relying heavily on internal `arviz` structures tied specifically to TFP outputs if possible.
+    *   *Rationale:* Ensures analysis and reporting work after the backend changes.
+
+6.  **Standardize Test Practices:** When writing *new* tests or refactoring existing ones, avoid inheriting from `tf.test.TestCase`. Prefer standard `unittest` or `pytest` fixtures and assertions (`assertEqual`, `assertAllClose` from `unittest` or NumPy). Use NumPy/standard Python for creating test data and assertions where possible, minimizing direct `tf.Tensor` comparisons unless testing TF-specific ops.
+    *   *Rationale:* Makes tests independent of TF infrastructure and easier to maintain post-migration.
+
+7.  **Keep Data Loading TF-Free:** Ensure data loading and preprocessing steps (`meridian/data/`) strictly produce standard Python/NumPy/Pandas/Xarray types. Avoid converting data to `tf.Tensor` until it enters the core modeling logic (`meridian/model/`) where it's currently necessary.
+    *   *Rationale:* Maintains clear separation of concerns and prevents TF "leaking" into data handling.
+
+8.  **Decouple Analysis from TF Tensors:** In the `meridian/analysis/` modules (especially `visualizer.py`, `formatter.py`, `summarizer.py`), ensure functions consuming model results (like posterior samples or derived metrics) primarily operate on standard data types (Pandas DataFrames, NumPy arrays, Python dicts/lists) extracted from the `InferenceData` or `xr.Dataset`. Minimize direct operations on raw `tf.Tensor` objects within these analysis functions.
+    *   *Rationale:* Allows analysis logic to remain stable even if the underlying tensor representation changes.
+
+9.  **Document Tensor Expectations:** Enhance docstrings for functions and methods currently accepting or returning `tf.Tensor` or TFP objects. Clearly document the *expected mathematical properties, shape, and structure* of the tensor/object (e.g., "Tensor of shape [n_chains, n_draws, n_geos] representing posterior means for geo effects"), independent of the specific TF/TFP type, to facilitate future replacement and understanding.
+    *   *Rationale:* Improves code clarity and provides essential information for future refactoring.
+
+10. **Justify `@tf.function` Usage:** Explicitly document the rationale for using `@tf.function(jit_compile=True)` decorators. If used primarily for performance gains on TF-specific operations (like complex math or MCMC steps), mark it with a comment like `# TODO(migration): Performance-critical TF block, re-evaluate after migration.` If used simply to wrap Python logic that could be standard NumPy/Python, consider removing it or refactoring the underlying logic.
+    *   *Rationale:* Identifies performance-critical sections tied to TF and avoids unnecessary TF graph compilation for logic that will change.
