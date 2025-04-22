@@ -1,0 +1,24 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+1.  **Adhere to Google Python Style Guide & Formatting:** The presence of `.pylintrc` (based on Google's guide) and `pyink` in `pyproject.toml` indicates a strong preference for this style. *Rule: Code must conform to the Google Python Style Guide. Use `pyink` for automatic formatting (likely 2-space indent, 80-char lines) and ensure code passes `pylint` checks based on the project's `.pylintrc`.*
+
+2.  **Leverage xarray for Labeled Data:** The library likely deals with multi-dimensional data (time, geo, channel). `xarray` is a natural fit and appears to be used (implied by data structures in tests/analysis). *Rule: Use `xarray.DataArray` and `xarray.Dataset` for handling multi-dimensional labeled data, especially for model inputs (`InputData`) and complex analysis outputs.*
+
+3.  **Strict Semantic Versioning is Enforced:** The CI pipeline explicitly checks for semantic version increments using `semver` and automates tagging. *Rule: Strictly follow Semantic Versioning 2.0.0. Increment `meridian.__version__` appropriately in `meridian/__init__.py` before merging features or fixes intended for a release. Update `CHANGELOG.md` accordingly.*
+
+4.  **Prioritize GPU Acceleration:** TensorFlow is a core dependency, and CUDA is an optional install (`[and-cuda]`). Colabs mention GPU requirements. Bayesian sampling (implied by TF Probability) benefits significantly. *Rule: Design and test performance-critical code (especially MCMC sampling and tensor operations) with GPU acceleration in mind. Ensure GPU compatibility is maintained.*
+
+5.  **Utilize Type Hinting:** The code uses type hints (`Sequence`, `Optional`, `Mapping`, `TypeAlias`). *Rule: Employ Python type hints for all function signatures and complex variable assignments to improve code clarity, correctness, and maintainability.*
+
+6.  **Centralize Constants:** A `constants.py` file exists. *Rule: Define shared constants (e.g., coordinate names, metric labels, default values, prior types) in `meridian/constants.py` to ensure consistency and ease of maintenance.*
+
+7.  **Write Comprehensive Unit Tests with Pytest:** Tests (`*_test.py`) exist alongside modules, and `pytest` is used in CI. `parameterized` is likely used for variations. *Rule: Implement unit tests for all new features and bug fixes using `pytest`. Place test files (`*_test.py`) alongside the code they test. Use `@parameterized` for testing multiple scenarios efficiently.*
+
+8.  **Maintain Modular Structure:** The codebase is clearly divided into `data`, `model`, and `analysis` sub-packages. *Rule: Respect the existing modular structure. Place data loading/validation logic in `meridian.data`, core modeling components in `meridian.model`, and post-modeling calculations/visualizations in `meridian.analysis`.*
+
+9.  **Use Specific Exception Types:** Custom exceptions like `NotFittedModelError` and `MCMCSamplingError` are defined or used. *Rule: Raise specific, informative exceptions instead of generic ones (e.g., prefer `ValueError` or custom exceptions like `NotFittedModelError` over `Exception`). Use the `warnings` module for non-critical issues or deprecations.*
+
+10. **Input Data Validation is Crucial:** The `InputData` class and its tests likely perform significant validation on shapes, coordinates, and values. *Rule: Rigorously validate all user-provided input data (`InputData`, `ModelSpec`, function arguments) for correct shape, dimensions, coordinates, types, and value ranges early in the processing pipeline.*
