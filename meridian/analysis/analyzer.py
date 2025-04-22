@@ -16,7 +16,7 @@
 
 from collections.abc import Mapping, Sequence
 import itertools
-from typing import Any, Optional
+from typing import Any, Optional, Union
 import warnings
 
 from meridian import constants
@@ -51,426 +51,98 @@ __all__ = [
 ]
 
 
-# TODO: Refactor the related unit tests to be under DataTensors.
-class DataTensors(experimental_extension_type):
+@experimental_extension_type()
+class DataTensors:
   """Container for data variable arguments of Analyzer methods.
 
   Attributes:
-    media: Optional tensor with dimensions `(n_geos, T, n_media_channels)` for
-      any time dimension `T`.
-    media_spend: Optional tensor with dimensions `(n_geos, T, n_media_channels)`
-      for any time dimension `T`.
-    reach: Optional tensor with dimensions `(n_geos, T, n_rf_channels)` for any
-      time dimension `T`.
-    frequency: Optional tensor with dimensions `(n_geos, T, n_rf_channels)` for
-      any time dimension `T`.
-    rf_spend: Optional tensor with dimensions `(n_geos, T, n_rf_channels)` for
-      any time dimension `T`.
-    organic_media: Optional tensor with dimensions `(n_geos, T,
-      n_organic_media_channels)` for any time dimension `T`.
-    organic_reach: Optional tensor with dimensions `(n_geos, T,
-      n_organic_rf_channels)` for any time dimension `T`.
-    organic_frequency: Optional tensor with dimensions `(n_geos, T,
-      n_organic_rf_channels)` for any time dimension `T`.
-    non_media_treatments: Optional tensor with dimensions `(n_geos, T,
-      n_non_media_channels)` for any time dimension `T`.
-    controls: Optional tensor with dimensions `(n_geos, n_times, n_controls)`.
-    revenue_per_kpi: Optional tensor with dimensions `(n_geos, T)` for any time
-      dimension `T`.
-    time: Optional tensor of time coordinates in the "YYYY-mm-dd" string format
-      for time dimension `T`.
+    kpi: A tensor of shape `[n_geos, n_times]` containing the KPI values.
+    media: A tensor of shape `[n_geos, n_times, n_media_channels]` containing
+      the media values.
+    media_spend: A tensor of shape `[n_geos, n_times, n_media_channels]`
+      containing the media spend values.
+    controls: A tensor of shape `[n_geos, n_times, n_controls]` containing the
+      control values.
+    non_media_treatments: A tensor of shape `[n_geos, n_times,
+      n_non_media_channels]` containing the non-media treatment values.
+    population: A tensor of shape `[n_geos, n_times]` containing the population
+      values.
+    time: A tensor of shape `[n_times]` containing the time values.
+    geo: A tensor of shape `[n_geos]` containing the geo values.
+    media_names: A sequence of strings containing the media channel names.
+    control_names: A sequence of strings containing the control names.
+    non_media_names: A sequence of strings containing the non-media channel
+      names.
   """
 
-  media: Optional[Tensor]
-  media_spend: Optional[Tensor]
-  reach: Optional[Tensor]
-  frequency: Optional[Tensor]
-  rf_spend: Optional[Tensor]
-  organic_media: Optional[Tensor]
-  organic_reach: Optional[Tensor]
-  organic_frequency: Optional[Tensor]
-  non_media_treatments: Optional[Tensor]
-  controls: Optional[Tensor]
-  revenue_per_kpi: Optional[Tensor]
-  time: Optional[Tensor]
-
-  def __init__(
-      self,
-      media: Optional[Tensor] = None,
-      media_spend: Optional[Tensor] = None,
-      reach: Optional[Tensor] = None,
-      frequency: Optional[Tensor] = None,
-      rf_spend: Optional[Tensor] = None,
-      organic_media: Optional[Tensor] = None,
-      organic_reach: Optional[Tensor] = None,
-      organic_frequency: Optional[Tensor] = None,
-      non_media_treatments: Optional[Tensor] = None,
-      controls: Optional[Tensor] = None,
-      revenue_per_kpi: Optional[Tensor] = None,
-      time: Optional[Sequence[str] | Tensor] = None,
-  ):
-    self.media = cast(media, tf.float32) if media is not None else None
-    self.media_spend = (
-        cast(media_spend, tf.float32) if media_spend is not None else None
-    )
-    self.reach = cast(reach, tf.float32) if reach is not None else None
-    self.frequency = (
-        cast(frequency, tf.float32) if frequency is not None else None
-    )
-    self.rf_spend = (
-        cast(rf_spend, tf.float32) if rf_spend is not None else None
-    )
-    self.organic_media = (
-        cast(organic_media, tf.float32)
-        if organic_media is not None
-        else None
-    )
-    self.organic_reach = (
-        cast(organic_reach, tf.float32)
-        if organic_reach is not None
-        else None
-    )
-    self.organic_frequency = (
-        cast(organic_frequency, tf.float32)
-        if organic_frequency is not None
-        else None
-    )
-    self.non_media_treatments = (
-        cast(non_media_treatments, tf.float32)
-        if non_media_treatments is not None
-        else None
-    )
-    self.controls = (
-        cast(controls, tf.float32) if controls is not None else None
-    )
-    self.revenue_per_kpi = (
-        cast(revenue_per_kpi, tf.float32)
-        if revenue_per_kpi is not None
-        else None
-    )
-    self.time = cast(time, tf.string) if time is not None else None
+  kpi: Tensor
+  media: Optional[Tensor] = None
+  media_spend: Optional[Tensor] = None
+  controls: Optional[Tensor] = None
+  non_media_treatments: Optional[Tensor] = None
+  population: Optional[Tensor] = None
+  time: Optional[Tensor] = None
+  geo: Optional[Tensor] = None
+  media_names: Optional[Sequence[str]] = None
+  control_names: Optional[Sequence[str]] = None
+  non_media_names: Optional[Sequence[str]] = None
 
   def __validate__(self):
-    self._validate_n_dims()
-
-  def total_spend(self) -> Tensor | None:
-    """Returns the total spend tensor.
-
-    Returns:
-      The `media_spend` tensor (if present) concatenated with the `rf_spend`
-      tensor (if present), in this order. If both tensors are missing, returns
-      `None`.
-    """
-    spend_tensors = []
-    if self.media_spend is not None:
-      spend_tensors.append(self.media_spend)
-    if self.rf_spend is not None:
-      spend_tensors.append(self.rf_spend)
-    return concat(spend_tensors, axis=-1) if spend_tensors else None
-
-  def get_modified_times(self, meridian: model.Meridian) -> int | None:
-    """Returns `n_times` of any tensor where `n_times` has been modified.
-
-    This method compares the time dimensions of the attributes in the
-    `DataTensors` object with the corresponding tensors in the `meridian`
-    object. If any of the time dimensions are different, then this method
-    returns the modified number of time periods of the tensor in the
-    `DataTensors` object. If all time dimensions are the same, returns `None`.
-
-    Args:
-      meridian: A Meridian object to validate against and get the original data
-        tensors from.
-
-    Returns:
-      The `n_times` of any tensor where `n_times` is different from the times
-      of the corresponding tensor in the `meridian` object. If all time
-      dimensions are the same, returns `None`.
-    """
-    for field in self._tf_extension_type_fields():
-      new_tensor = getattr(self, field.name)
-      old_tensor = getattr(meridian.input_data, field.name)
-      # The time dimension is always the second dimension, except for when spend
-      # data is provided with only one dimension of (n_channels).
-      if (
-          new_tensor is not None
-          and old_tensor is not None
-          and new_tensor.ndim > 1
-          and new_tensor.shape[1] != old_tensor.shape[1]
-      ):
-        return new_tensor.shape[1]
-    return None
-
-  def filter_fields(self, fields: Sequence[str]) -> Self:
-    """Returns a new DataTensors object with only the specified fields."""
-    output = {}
-    for field in fields:
-      output[field] = getattr(self, field)
-    return DataTensors(**output)
-
-  def validate_and_fill_missing_data(
-      self,
-      required_tensors_names: Sequence[str],
-      meridian: model.Meridian,
-      allow_modified_times: bool = True,
-  ) -> Self:
-    """Fills missing data tensors with their original values from the model.
-
-    This method uses the collection of data tensors set in the DataTensor class
-    and fills in the missing tensors with their original values from the
-    Meridian object that is passed in. For example, if `required_tensors_names =
-    ["media", "reach", "frequency"]` and only `media` is set in the DataTensors
-    class, then this method will output a new DataTensors object with the
-    `media` value in this object plus the values of the `reach` and `frequency`
-    from the `meridian` object.
-
-    Args:
-      required_tensors_names: A sequence of data tensors names to validate and
-        fill in with the original values from the `meridian` object.
-      meridian: The Meridian object to validate against and get the original
-        data tensors from.
-      allow_modified_times: A boolean flag indicating whether to allow modified
-        time dimensions in the new data tensors. If False, an error will be
-        raised if the time dimensions of any tensor is modified.
-
-    Returns:
-      A `DataTensors` container with the original values from the Meridian
-      object filled in for the missing data tensors.
-    """
-    self._validate_correct_variables_filled(required_tensors_names, meridian)
-    self._validate_geo_dims(required_tensors_names, meridian)
-    self._validate_channel_dims(required_tensors_names, meridian)
-    if allow_modified_times:
-      self._validate_time_dims_flexible_times(required_tensors_names, meridian)
-    else:
-      self._validate_time_dims(required_tensors_names, meridian)
-
-    return self._fill_default_values(required_tensors_names, meridian)
-
-  def _validate_n_dims(self):
-    """Raises an error if the tensors have the wrong number of dimensions."""
-    for field in self._tf_extension_type_fields():
-      tensor = getattr(self, field.name)
-      if tensor is None:
-        continue
-      if field.name == constants.REVENUE_PER_KPI:
-        _check_n_dims(tensor, field.name, 2)
-      elif field.name in [constants.MEDIA_SPEND, constants.RF_SPEND]:
-        if tensor.ndim not in [1, 3]:
-          raise ValueError(
-              f"New `{field.name}` must have 1 or 3 dimensions. Found"
-              f" {tensor.ndim} dimensions."
-          )
-      elif field.name == constants.TIME:
-        _check_n_dims(tensor, field.name, 1)
-      else:
-        _check_n_dims(tensor, field.name, 3)
-
-  def _validate_correct_variables_filled(
-      self, required_variables: Sequence[str], meridian: model.Meridian
-  ):
-    """Validates that the correct variables are filled.
-
-    Args:
-      required_variables: A sequence of data tensors names that are required to
-        be filled in.
-      meridian: The Meridian object to validate against.
-
-    Raises:
-      ValueError: If an attribute exists in the `DataTensors` object that is not
-        in the `meridian` object, it is not allowed to be used in analysis.
-      Warning: If an attribute exists in the `DataTensors` object that is not in
-        the `required_variables` list, it will be ignored.
-    """
-    for field in self._tf_extension_type_fields():
-      tensor = getattr(self, field.name)
-      if tensor is None:
-        continue
-      if field.name not in required_variables:
-        warnings.warn(
-            f"A `{field.name}` value was passed in the `new_data` argument. "
-            "This is not supported and will be ignored."
-        )
-      if field.name in required_variables:
-        if getattr(meridian.input_data, field.name) is None:
-          raise ValueError(
-              f"New `{field.name}` is not allowed because the input data to the"
-              f" Meridian model does not contain `{field.name}`."
-          )
-
-  def _validate_geo_dims(
-      self, required_fields: Sequence[str], meridian: model.Meridian
-  ):
-    """Validates the geo dimension of the specified data variables."""
-    for var_name in required_fields:
-      new_tensor = getattr(self, var_name)
-      if new_tensor is not None and new_tensor.shape[0] != meridian.n_geos:
-        # Skip spend and time data with only 1 dimension.
-        if new_tensor.ndim == 1:
-          continue
-        raise ValueError(
-            f"New `{var_name}` is expected to have {meridian.n_geos}"
-            f" geos. Found {new_tensor.shape[0]} geos."
-        )
-
-  def _validate_channel_dims(
-      self, required_fields: Sequence[str], meridian: model.Meridian
-  ):
-    """Validates the channel dimension of the specified data variables."""
-    for var_name in required_fields:
-      if var_name in [constants.REVENUE_PER_KPI, constants.TIME]:
-        continue
-      new_tensor = getattr(self, var_name)
-      old_tensor = getattr(meridian.input_data, var_name)
-      if new_tensor is not None:
-        assert old_tensor is not None
-        if new_tensor.shape[-1] != old_tensor.shape[-1]:
-          raise ValueError(
-              f"New `{var_name}` is expected to have {old_tensor.shape[-1]}"
-              f" channels. Found {new_tensor.shape[-1]} channels."
-          )
-
-  def _validate_time_dims(
-      self, required_fields: Sequence[str], meridian: model.Meridian
-  ):
-    """Validates the time dimension of the specified data variables."""
-    for var_name in required_fields:
-      new_tensor = getattr(self, var_name)
-      old_tensor = getattr(meridian.input_data, var_name)
-
-      # Skip spend data with only 1 dimension of (n_channels).
-      if (
-          var_name in [constants.MEDIA_SPEND, constants.RF_SPEND]
-          and new_tensor is not None
-          and new_tensor.ndim == 1
-      ):
-        continue
-
-      if new_tensor is not None:
-        assert old_tensor is not None
-        if (
-            var_name == constants.TIME
-            and new_tensor.shape[0] != old_tensor.shape[0]
-        ):
-          raise ValueError(
-              f"New `{var_name}` is expected to have {old_tensor.shape[0]}"
-              f" time periods. Found {new_tensor.shape[0]} time periods."
-          )
-        elif new_tensor.ndim > 1 and new_tensor.shape[1] != old_tensor.shape[1]:
-          raise ValueError(
-              f"New `{var_name}` is expected to have {old_tensor.shape[1]}"
-              f" time periods. Found {new_tensor.shape[1]} time periods."
-          )
-
-  def _validate_time_dims_flexible_times(
-      self, required_fields: Sequence[str], meridian: model.Meridian
-  ):
-    """Validates the time dimension for the flexible times case."""
-    new_n_times = self.get_modified_times(meridian)
-    # If no times were modified, then there is nothing more to validate.
-    if new_n_times is None:
-      return
-
-    missing_params = []
-    for var_name in required_fields:
-      new_tensor = getattr(self, var_name)
-      old_tensor = getattr(meridian.input_data, var_name)
-
-      if old_tensor is None:
-        continue
-      # Skip spend data with only 1 dimension of (n_channels).
-      if (
-          var_name in [constants.MEDIA_SPEND, constants.RF_SPEND]
-          and new_tensor is not None
-          and new_tensor.ndim == 1
-      ):
-        continue
-
-      if new_tensor is None:
-        missing_params.append(var_name)
-      elif var_name == constants.TIME and new_tensor.shape[0] != new_n_times:
-        raise ValueError(
-            "If the time dimension of any variable in `new_data` is "
-            "modified, then all variables must be provided with the same "
-            f"number of time periods. `{var_name}` has {new_tensor.shape[1]} "
-            "time periods, which does not match the modified number of time "
-            f"periods, {new_n_times}.",
-        )
-      elif new_tensor.ndim > 1 and new_tensor.shape[1] != new_n_times:
-        raise ValueError(
-            "If the time dimension of any variable in `new_data` is "
-            "modified, then all variables must be provided with the same "
-            f"number of time periods. `{var_name}` has {new_tensor.shape[1]} "
-            "time periods, which does not match the modified number of time "
-            f"periods, {new_n_times}.",
-        )
-
-    if missing_params:
+    """Validates the data tensors."""
+    if self.kpi is None:
+      raise ValueError("kpi must be provided")
+    if self.media is not None and self.media_spend is None:
+      raise ValueError("media_spend must be provided if media is provided")
+    if self.media is not None and self.media_names is None:
+      raise ValueError("media_names must be provided if media is provided")
+    if self.controls is not None and self.control_names is None:
+      raise ValueError("control_names must be provided if controls is provided")
+    if self.non_media_treatments is not None and self.non_media_names is None:
       raise ValueError(
-          "If the time dimension of a variable in `new_data` is modified,"
-          " then all variables must be provided in `new_data`."
-          f" The following variables are missing: `{missing_params}`."
+          "non_media_names must be provided if non_media_treatments is provided"
       )
 
-  def _fill_default_values(
-      self, required_fields: Sequence[str], meridian: model.Meridian
-  ) -> Self:
-    """Fills default values and returns a new DataTensors object."""
-    output = {}
-    for field in self._tf_extension_type_fields():
-      var_name = field.name
-      if var_name not in required_fields:
-        continue
 
-      if hasattr(meridian.media_tensors, var_name):
-        old_tensor = getattr(meridian.media_tensors, var_name)
-      elif hasattr(meridian.rf_tensors, var_name):
-        old_tensor = getattr(meridian.rf_tensors, var_name)
-      elif hasattr(meridian.organic_media_tensors, var_name):
-        old_tensor = getattr(meridian.organic_media_tensors, var_name)
-      elif hasattr(meridian.organic_rf_tensors, var_name):
-        old_tensor = getattr(meridian.organic_rf_tensors, var_name)
-      elif var_name == constants.NON_MEDIA_TREATMENTS:
-        old_tensor = meridian.non_media_treatments
-      elif var_name == constants.CONTROLS:
-        old_tensor = meridian.controls
-      elif var_name == constants.REVENUE_PER_KPI:
-        old_tensor = meridian.revenue_per_kpi
-      elif var_name == constants.TIME:
-        old_tensor = tf.convert_to_tensor(
-            meridian.input_data.time.values.tolist(), dtype=tf.string
-        )
-      else:
-        continue
+@experimental_extension_type()
+class DistributionTensors:
+  """Container for distribution variable arguments of Analyzer methods.
 
-      new_tensor = getattr(self, var_name)
-      output[var_name] = new_tensor if new_tensor is not None else old_tensor
+  Attributes:
+    knot_values: A tensor of shape `[n_knots]` containing the knot values.
+    tau_g: A tensor of shape `[n_geos]` containing the geo effects.
+    beta_m: A tensor of shape `[n_media_channels]` containing the media
+      effects.
+    beta_rf: A tensor of shape `[n_rf_channels]` containing the reach and
+      frequency effects.
+    beta_om: A tensor of shape `[n_organic_media_channels]` containing the
+      organic media effects.
+    beta_orf: A tensor of shape `[n_organic_rf_channels]` containing the
+      organic reach and frequency effects.
+    gamma_c: A tensor of shape `[n_controls]` containing the control effects.
+    gamma_n: A tensor of shape `[n_non_media_channels]` containing the
+      non-media effects.
+    sigma: A tensor of shape `[n_geos]` containing the noise standard
+      deviations.
+  """
 
-    return DataTensors(**output)
+  knot_values: Tensor
+  tau_g: Tensor
+  beta_m: Optional[Tensor] = None
+  beta_rf: Optional[Tensor] = None
+  beta_om: Optional[Tensor] = None
+  beta_orf: Optional[Tensor] = None
+  gamma_c: Optional[Tensor] = None
+  gamma_n: Optional[Tensor] = None
+  sigma: Tensor
 
-
-class DistributionTensors(experimental_extension_type):
-  """Container for parameters distributions arguments of Analyzer methods."""
-
-  alpha_m: Optional[Tensor] = None
-  alpha_rf: Optional[Tensor] = None
-  alpha_om: Optional[Tensor] = None
-  alpha_orf: Optional[Tensor] = None
-  ec_m: Optional[Tensor] = None
-  ec_rf: Optional[Tensor] = None
-  ec_om: Optional[Tensor] = None
-  ec_orf: Optional[Tensor] = None
-  slope_m: Optional[Tensor] = None
-  slope_rf: Optional[Tensor] = None
-  slope_om: Optional[Tensor] = None
-  slope_orf: Optional[Tensor] = None
-  beta_gm: Optional[Tensor] = None
-  beta_grf: Optional[Tensor] = None
-  beta_gom: Optional[Tensor] = None
-  beta_gorf: Optional[Tensor] = None
-  mu_t: Optional[Tensor] = None
-  tau_g: Optional[Tensor] = None
-  gamma_gc: Optional[Tensor] = None
-  gamma_gn: Optional[Tensor] = None
+  def __validate__(self):
+    """Validates the distribution tensors."""
+    if self.knot_values is None:
+      raise ValueError("knot_values must be provided")
+    if self.tau_g is None:
+      raise ValueError("tau_g must be provided")
+    if self.sigma is None:
+      raise ValueError("sigma must be provided")
 
 
 def _transformed_new_or_scaled(
