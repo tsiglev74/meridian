@@ -75,11 +75,12 @@ class ModelSpecTest(parameterized.TestCase):
       ("mroi_coefficient", "mroi", "coefficient"),
       ("coefficient_roi", "coefficient", "roi"),
   )
-  def test_spec_inits_valid_paid_media_prior_type_works(
+  def test_spec_inits_valid_prior_types_works(
       self, media_prior_type, rf_prior_type
   ):
+    # Test initialization with direct params, check effective properties
     model_spec = spec.ModelSpec(
-        effective_media_prior_type=media_prior_type, effective_rf_prior_type=rf_prior_type
+        media_prior_type=media_prior_type, rf_prior_type=rf_prior_type
     )
     self.assertEqual(model_spec.effective_media_prior_type, media_prior_type)
     self.assertEqual(model_spec.effective_rf_prior_type, rf_prior_type)
@@ -104,12 +105,13 @@ class ModelSpecTest(parameterized.TestCase):
           ),
       ),
   )
-  def test_spec_inits_invalid_media_prior_type_fails(
+  def test_spec_inits_invalid_prior_types_fails(
       self, media_prior_type, rf_prior_type, error_message
   ):
+    # Test initialization with direct params raises expected error
     with self.assertRaisesWithLiteralMatch(ValueError, error_message):
       spec.ModelSpec(
-          effective_media_prior_type=media_prior_type, effective_rf_prior_type=rf_prior_type
+          media_prior_type=media_prior_type, rf_prior_type=rf_prior_type
       )
 
   def test_spec_inits_valid_roi_calibration_works(self):
@@ -222,6 +224,71 @@ class ModelSpecTest(parameterized.TestCase):
   def test_spec_inits_empty_knots_fails(self, knots, error_message):
     with self.assertRaisesWithLiteralMatch(ValueError, error_message):
       spec.ModelSpec(knots=knots)
+
+  def test_effective_media_prior_type_with_media_prior_type_set(self):
+    """Tests effective_media_prior_type when media_prior_type is set."""
+    model_spec = spec.ModelSpec(media_prior_type="mroi")
+    self.assertEqual(model_spec.effective_media_prior_type, "mroi")
+
+  def test_effective_media_prior_type_with_paid_media_prior_type_set(self):
+    """Tests effective_media_prior_type when paid_media_prior_type is set."""
+    model_spec = spec.ModelSpec(
+        media_prior_type=None, paid_media_prior_type="coefficient"
+    )
+    self.assertEqual(model_spec.effective_media_prior_type, "coefficient")
+
+  def test_effective_media_prior_type_with_both_none(self):
+    """Tests effective_media_prior_type when both are None."""
+    model_spec = spec.ModelSpec(media_prior_type=None, paid_media_prior_type=None)
+    self.assertEqual(model_spec.effective_media_prior_type, "roi")  # Default
+
+  def test_effective_rf_prior_type_with_rf_prior_type_set(self):
+    """Tests effective_rf_prior_type when rf_prior_type is set."""
+    model_spec = spec.ModelSpec(rf_prior_type="coefficient")
+    self.assertEqual(model_spec.effective_rf_prior_type, "coefficient")
+
+  def test_effective_rf_prior_type_with_paid_media_prior_type_set(self):
+    """Tests effective_rf_prior_type when paid_media_prior_type is set."""
+    model_spec = spec.ModelSpec(
+        rf_prior_type=None, paid_media_prior_type="mroi"
+    )
+    self.assertEqual(model_spec.effective_rf_prior_type, "mroi")
+
+  def test_effective_rf_prior_type_with_both_none(self):
+    """Tests effective_rf_prior_type when both are None."""
+    model_spec = spec.ModelSpec(rf_prior_type=None, paid_media_prior_type=None)
+    self.assertEqual(model_spec.effective_rf_prior_type, "roi")  # Default
+
+  def test_init_fails_with_paid_media_and_media_prior_types(self):
+    """Tests ValueError if paid_media_prior_type and media_prior_type are set."""
+    error_message = (
+        "`paid_media_prior_type` is deprecated. Use `media_prior_type` and"
+        " `rf_prior_type` instead. Do not set `paid_media_prior_type` if"
+        " `media_prior_type` or `rf_prior_type` is set."
+    )
+    with self.assertRaisesWithLiteralMatch(ValueError, error_message):
+      spec.ModelSpec(
+          paid_media_prior_type="roi", media_prior_type="coefficient"
+      )
+
+  def test_init_fails_with_paid_media_and_rf_prior_types(self):
+    """Tests ValueError if paid_media_prior_type and rf_prior_type are set."""
+    error_message = (
+        "`paid_media_prior_type` is deprecated. Use `media_prior_type` and"
+        " `rf_prior_type` instead. Do not set `paid_media_prior_type` if"
+        " `media_prior_type` or `rf_prior_type` is set."
+    )
+    with self.assertRaisesWithLiteralMatch(ValueError, error_message):
+      spec.ModelSpec(paid_media_prior_type="roi", rf_prior_type="mroi")
+
+  def test_init_warns_with_only_paid_media_prior_type(self):
+    """Tests UserWarning if only paid_media_prior_type is set."""
+    warning_message = (
+        "`paid_media_prior_type` is deprecated. Use `media_prior_type` and"
+        " `rf_prior_type` instead."
+    )
+    with self.assertWarnsRegex(UserWarning, warning_message):
+      spec.ModelSpec(paid_media_prior_type="roi")
 
 
 if __name__ == "__main__":
