@@ -244,7 +244,7 @@ class ModelTest(
       model.Meridian(
           input_data=self.input_data_non_revenue_no_revenue_per_kpi,
           model_spec=spec.ModelSpec(
-              media_prior_type=constants.TREATMENT_PRIOR_TYPE_MROI
+              effective_media_prior_type=constants.TREATMENT_PRIOR_TYPE_MROI
           ),
       )
 
@@ -257,7 +257,7 @@ class ModelTest(
       model.Meridian(
           input_data=self.input_data_media_and_rf_non_revenue_no_revenue_per_kpi,
           model_spec=spec.ModelSpec(
-              rf_prior_type=constants.TREATMENT_PRIOR_TYPE_MROI
+              effective_rf_prior_type=constants.TREATMENT_PRIOR_TYPE_MROI
           ),
       )
 
@@ -272,8 +272,8 @@ class ModelTest(
       model.Meridian(
           input_data=self.input_data_media_and_rf_non_revenue_no_revenue_per_kpi,
           model_spec=spec.ModelSpec(
-              media_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
-              rf_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+              effective_media_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
+              effective_rf_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
           ),
       )
 
@@ -288,8 +288,8 @@ class ModelTest(
       model.Meridian(
           input_data=self.input_data_media_and_rf_non_revenue_no_revenue_per_kpi,
           model_spec=spec.ModelSpec(
-              rf_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
-              media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+              effective_rf_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
+              effective_media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
           ),
       )
 
@@ -348,7 +348,7 @@ class ModelTest(
     meridian = model.Meridian(
         input_data=self.input_data_non_revenue_no_revenue_per_kpi,
         model_spec=spec.ModelSpec(
-            media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT
+            effective_media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT
         ),
     )
     # Compare input data.
@@ -358,7 +358,7 @@ class ModelTest(
 
     # Create sample model spec for comparison
     sample_spec = spec.ModelSpec(
-        media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT
+        effective_media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT
     )
 
     # Compare model spec.
@@ -559,8 +559,8 @@ class ModelTest(
           input_data=self.input_data_with_media_and_rf,
           model_spec=spec.ModelSpec(
               prior=distribution,
-              media_prior_type=media_prior_type,
-              rf_prior_type=rf_prior_type,
+              effective_media_prior_type=media_prior_type,
+              effective_rf_prior_type=rf_prior_type,
           ),
       )
       self.assertLen(w, 1)
@@ -878,8 +878,8 @@ class ModelTest(
       model.Meridian(
           input_data=zero_kpi_input_data,
           model_spec=spec.ModelSpec(
-              media_prior_type=media_prior_type,
-              rf_prior_type=rf_prior_type,
+              effective_media_prior_type=media_prior_type,
+              effective_rf_prior_type=rf_prior_type,
           ),
       )
 
@@ -914,7 +914,7 @@ class ModelTest(
       model.Meridian(
           input_data=zero_kpi_input_data,
           model_spec=spec.ModelSpec(
-              media_prior_type=media_prior_type,
+              effective_media_prior_type=media_prior_type,
           ),
       )
 
@@ -929,8 +929,8 @@ class ModelTest(
     meridian = model.Meridian(
         input_data=zero_kpi_input_data,
         model_spec=spec.ModelSpec(
-            media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
-            rf_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+            effective_media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+            effective_rf_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
         ),
     )
 
@@ -944,7 +944,7 @@ class ModelTest(
     national_meridian = model.Meridian(
         input_data=zero_kpi_national_input_data,
         model_spec=spec.ModelSpec(
-            media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+            effective_media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
         ),
     )
 
@@ -1791,8 +1791,8 @@ class NonPaidModelTest(
       self, paid_media_prior_type: str, media_effects_dist: str
   ):
     model_spec = spec.ModelSpec(
-        media_prior_type=paid_media_prior_type,
-        rf_prior_type=paid_media_prior_type,
+        effective_media_prior_type=paid_media_prior_type,
+        effective_rf_prior_type=paid_media_prior_type,
         media_effects_dist=media_effects_dist,
     )
     meridian = model.Meridian(

@@ -95,8 +95,8 @@ class PosteriorMCMCSamplerTest(
       media_effects_dist: str,
   ):
     model_spec = spec.ModelSpec(
-        media_prior_type=paid_media_prior_type,
-        rf_prior_type=paid_media_prior_type,
+        effective_media_prior_type=paid_media_prior_type,
+        effective_rf_prior_type=paid_media_prior_type,
         media_effects_dist=media_effects_dist,
     )
     meridian = model.Meridian(
@@ -240,7 +240,7 @@ class PosteriorMCMCSamplerTest(
       media_effects_dist: str,
   ):
     model_spec = spec.ModelSpec(
-        rf_prior_type=paid_media_prior_type,
+        effective_rf_prior_type=paid_media_prior_type,
         media_effects_dist=media_effects_dist,
     )
     meridian = model.Meridian(
@@ -386,8 +386,8 @@ class PosteriorMCMCSamplerTest(
       media_effects_dist: str,
   ):
     model_spec = spec.ModelSpec(
-        media_prior_type=paid_media_prior_type,
-        rf_prior_type=paid_media_prior_type,
+        effective_media_prior_type=paid_media_prior_type,
+        effective_rf_prior_type=paid_media_prior_type,
         media_effects_dist=media_effects_dist,
     )
     meridian = model.Meridian(

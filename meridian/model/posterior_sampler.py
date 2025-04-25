@@ -167,7 +167,7 @@ class PosteriorMCMCSampler:
             ec=ec_m,
             slope=slope_m,
         )
-        prior_type = mmm.model_spec.media_prior_type
+        prior_type = mmm.model_spec.effective_media_prior_type
         if prior_type in constants.PAID_MEDIA_ROI_PRIOR_TYPES:
           if prior_type == constants.TREATMENT_PRIOR_TYPE_ROI:
             roi_or_mroi_m = yield prior_broadcast.roi_m
@@ -220,7 +220,7 @@ class PosteriorMCMCSampler:
             slope=slope_rf,
         )
 
-        prior_type = mmm.model_spec.rf_prior_type
+        prior_type = mmm.model_spec.effective_rf_prior_type
         if prior_type in constants.PAID_MEDIA_ROI_PRIOR_TYPES:
           if prior_type == constants.TREATMENT_PRIOR_TYPE_ROI:
             roi_or_mroi_rf = yield prior_broadcast.roi_rf

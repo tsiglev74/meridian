@@ -85,7 +85,7 @@ def build_media_tensors(
   # Derive counterfactual media tensors depending on whether mroi or roi priors
   # are used and whether roi_calibration_period is specified.
   if (
-      model_spec.media_prior_type
+      model_spec.effective_media_prior_type
       == constants.TREATMENT_PRIOR_TYPE_MROI
   ):
     factor = constants.MROI_FACTOR

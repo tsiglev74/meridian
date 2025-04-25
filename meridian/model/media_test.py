@@ -187,8 +187,8 @@ class MediaTensorsTest(tf.test.TestCase, parameterized.TestCase):
     media_tensors = media.build_media_tensors(
         _INPUT_DATA_WITH_MEDIA_ONLY,
         spec.ModelSpec(
-            media_prior_type=paid_media_prior_type,
-            rf_prior_type=paid_media_prior_type,
+            effective_media_prior_type=paid_media_prior_type,
+            effective_rf_prior_type=paid_media_prior_type,
             roi_calibration_period=roi_calibration_period,
         ),
     )

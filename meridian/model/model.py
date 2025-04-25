@@ -667,12 +667,12 @@ class Meridian:
     for ignored_priors_dict, prior_type, prior_type_name in (
         (
             constants.IGNORED_PRIORS_MEDIA,
-            self.model_spec.media_prior_type,
+            self.model_spec.effective_media_prior_type,
             "media_prior_type",
         ),
         (
             constants.IGNORED_PRIORS_RF,
-            self.model_spec.rf_prior_type,
+            self.model_spec.effective_rf_prior_type,
             "rf_prior_type",
         ),
     ):
@@ -701,7 +701,7 @@ class Meridian:
       if (
           self.n_media_channels > 0
           and (
-              self.model_spec.media_prior_type
+              self.model_spec.effective_media_prior_type
               == constants.TREATMENT_PRIOR_TYPE_MROI
           )
           and prior_distribution.distributions_are_equal(
@@ -716,7 +716,7 @@ class Meridian:
       if (
           self.n_rf_channels > 0
           and (
-              self.model_spec.rf_prior_type
+              self.model_spec.effective_rf_prior_type
               == constants.TREATMENT_PRIOR_TYPE_MROI
           )
           and prior_distribution.distributions_are_equal(
@@ -737,13 +737,13 @@ class Meridian:
     ):
       default_distribution = prior_distribution.PriorDistribution()
       default_roi_m_used = (
-          self.model_spec.media_prior_type == constants.TREATMENT_PRIOR_TYPE_ROI
+          self.model_spec.effective_media_prior_type == constants.TREATMENT_PRIOR_TYPE_ROI
           and prior_distribution.distributions_are_equal(
               self.model_spec.prior.roi_m, default_distribution.roi_m
           )
       )
       default_roi_rf_used = (
-          self.model_spec.rf_prior_type == constants.TREATMENT_PRIOR_TYPE_ROI
+          self.model_spec.effective_rf_prior_type == constants.TREATMENT_PRIOR_TYPE_ROI
           and prior_distribution.distributions_are_equal(
               self.model_spec.prior.roi_rf, default_distribution.roi_rf
           )
@@ -924,22 +924,22 @@ class Meridian:
     if (
         self.n_media_channels > 0
         and self.kpi_transformer.population_scaled_stdev == 0
-        and self.model_spec.media_prior_type
+        and self.model_spec.effective_media_prior_type
         in constants.PAID_MEDIA_ROI_PRIOR_TYPES
     ):
       raise ValueError(
           f"`{kpi}` cannot be constant with"
-          f' `media_prior_type` = "{self.model_spec.media_prior_type}".'
+          f' `media_prior_type` = "{self.model_spec.effective_media_prior_type}".'
       )
     if (
         self.n_rf_channels > 0
         and self.kpi_transformer.population_scaled_stdev == 0
-        and self.model_spec.rf_prior_type
+        and self.model_spec.effective_rf_prior_type
         in constants.PAID_MEDIA_ROI_PRIOR_TYPES
     ):
       raise ValueError(
           f"`{kpi}` cannot be constant with"
-          f' `rf_prior_type` = "{self.model_spec.rf_prior_type}".'
+          f' `rf_prior_type` = "{self.model_spec.effective_rf_prior_type}".'
       )
 
   def adstock_hill_media(

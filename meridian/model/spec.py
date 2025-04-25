@@ -96,6 +96,10 @@ class ModelSpec:
       mROI. When `rf_prior_type` is `'coefficient'`, the
       `PriorDistribution.beta_rf` parameter is used to specify a prior on the
       coefficient mean parameters. Default: `'roi'`.
+    paid_media_prior_type: Deprecated. Use `media_prior_type` and
+      `rf_prior_type` instead. A string to specify the prior type for media and
+      RF treatments at the same time. Ignored when `media_prior_type` or
+      `rf_prior_type` are set. Default: `'roi'`.
     roi_calibration_period: An optional boolean array of shape `(n_media_times,
       n_media_channels)` indicating the subset of `time` that the ROI value of
       the `roi_m` prior applies to. The ROI numerator is the incremental outcome
@@ -155,8 +159,9 @@ class ModelSpec:
   hill_before_adstock: bool = False
   max_lag: int | None = 8
   unique_sigma_for_each_geo: bool = False
-  media_prior_type: str = constants.TREATMENT_PRIOR_TYPE_ROI
-  rf_prior_type: str = constants.TREATMENT_PRIOR_TYPE_ROI
+  media_prior_type: str | None = None
+  rf_prior_type: str | None = None
+  paid_media_prior_type: str | None = None
   roi_calibration_period: np.ndarray | None = None
   rf_roi_calibration_period: np.ndarray | None = None
   knots: int | list[int] | None = None
@@ -172,31 +177,52 @@ class ModelSpec:
           f"The `media_effects_dist` parameter '{self.media_effects_dist}' must"
           f" be one of {sorted(list(constants.MEDIA_EFFECTS_DISTRIBUTIONS))}."
       )
+    # Support paid_media_prior_type for backwards compatibility.
+    if self.paid_media_prior_type is not None:
+      if (
+          self.effective_media_prior_type is not None
+          or self.effective_rf_prior_type is not None
+      ):
+        raise ValueError(
+            "The deprecated `paid_media_prior_type` parameter cannot be used"
+            " with `media_prior_type` or `rf_prior_type`. Use"
+            " `media_prior_type` and `rf_prior_type` instead."
+        )
+      else:
+        raise UserWarning(
+            "The `paid_media_prior_type` parameter to set prior types for media"
+            " and RF at the same time is deprecated and will be removed in a"
+            " future version of Meridian. Use `media_prior_type` and"
+            " `rf_prior_type` instead."
+        )
     # Validate prior_type.
-    if self.media_prior_type not in constants.PAID_TREATMENT_PRIOR_TYPES:
+    if (
+        self.effective_media_prior_type
+        not in constants.PAID_TREATMENT_PRIOR_TYPES
+    ):
       raise ValueError(
           "The `media_prior_type` parameter"
-          f" '{self.media_prior_type}' must be one of"
+          f" '{self.effective_media_prior_type}' must be one of"
           f" {sorted(list(constants.PAID_TREATMENT_PRIOR_TYPES))}."
       )
-    if self.rf_prior_type not in constants.PAID_TREATMENT_PRIOR_TYPES:
+    if self.effective_rf_prior_type not in constants.PAID_TREATMENT_PRIOR_TYPES:
       raise ValueError(
           "The `rf_prior_type` parameter"
-          f" '{self.rf_prior_type}' must be one of"
+          f" '{self.effective_rf_prior_type}' must be one of"
           f" {sorted(list(constants.PAID_TREATMENT_PRIOR_TYPES))}."
       )
     _validate_roi_calibration_period(
         array=self.roi_calibration_period,
         array_name="roi_calibration_period",
         channel_dim_name="n_media_channels",
-        prior_type=self.media_prior_type,
+        prior_type=self.effective_media_prior_type,
         prior_type_name="media_prior_type",
     )
     _validate_roi_calibration_period(
         array=self.rf_roi_calibration_period,
         array_name="rf_roi_calibration_period",
         channel_dim_name="n_rf_channels",
-        prior_type=self.rf_prior_type,
+        prior_type=self.effective_rf_prior_type,
         prior_type_name="rf_prior_type",
     )
 
@@ -205,3 +231,35 @@ class ModelSpec:
       raise ValueError("The `knots` parameter cannot be an empty list.")
     if isinstance(self.knots, int) and self.knots == 0:
       raise ValueError("The `knots` parameter cannot be zero.")
+
+  @property
+  def effective_media_prior_type(self) -> str:
+    """Returns the effective media prior type.
+
+    The recommended way to set prior types is to use `media_prior_type` and
+    `rf_prior_type` directly. If both `media_prior_type` and `rf_prior_type`
+    are not set, the deprecated `paid_media_prior_type` is used for both media
+    and RF channels. If none of them are set, the default is `roi`.
+    """
+    if self.media_prior_type is not None:
+      return self.media_prior_type
+    elif self.paid_media_prior_type is not None:
+      return self.paid_media_prior_type
+    else:
+      return constants.TREATMENT_PRIOR_TYPE_ROI
+
+  @property
+  def effective_rf_prior_type(self) -> str:
+    """Returns the effective rf prior type.
+
+    The recommended way to set prior types is to use `media_prior_type` and
+    `rf_prior_type` directly. If both `media_prior_type` and `rf_prior_type`
+    are not set, the deprecated `paid_media_prior_type` is used for both media
+    and RF channels. If none of them are set, the default is `roi`.
+    """
+    if self.rf_prior_type is not None:
+      return self.rf_prior_type
+    elif self.paid_media_prior_type is not None:
+      return self.paid_media_prior_type
+    else:
+      return constants.TREATMENT_PRIOR_TYPE_ROI

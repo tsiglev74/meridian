@@ -101,7 +101,7 @@ class PriorDistributionSampler:
     )
 
     if mmm.model_spec.roi_calibration_period is None and (
-        mmm.model_spec.media_prior_type == constants.TREATMENT_PRIOR_TYPE_ROI
+        mmm.model_spec.effective_media_prior_type == constants.TREATMENT_PRIOR_TYPE_ROI
     ):
       # We can skip the adstock/hill computation step in this case.
       media_counterfactual_transformed = tf.zeros_like(media_transformed)
@@ -248,7 +248,7 @@ class PriorDistributionSampler:
         slope=media_vars[constants.SLOPE_M],
     )
 
-    prior_type = mmm.model_spec.media_prior_type
+    prior_type = mmm.model_spec.effective_media_prior_type
     if prior_type == constants.TREATMENT_PRIOR_TYPE_ROI:
       roi_m = prior.roi_m.sample(**sample_kwargs)
       beta_m_value = self.get_roi_prior_beta_m_value(
@@ -332,7 +332,7 @@ class PriorDistributionSampler:
         slope=rf_vars[constants.SLOPE_RF],
     )
 
-    prior_type = mmm.model_spec.rf_prior_type
+    prior_type = mmm.model_spec.effective_rf_prior_type
     if prior_type == constants.TREATMENT_PRIOR_TYPE_ROI:
       roi_rf = prior.roi_rf.sample(**sample_kwargs)
       beta_rf_value = self.get_roi_prior_beta_rf_value(

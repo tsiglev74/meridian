@@ -30,8 +30,8 @@ class ModelSpecTest(parameterized.TestCase):
     self.assertFalse(model_spec.hill_before_adstock)
     self.assertEqual(model_spec.max_lag, 8)
     self.assertFalse(model_spec.unique_sigma_for_each_geo)
-    self.assertEqual(model_spec.media_prior_type, "roi")
-    self.assertEqual(model_spec.rf_prior_type, "roi")
+    self.assertEqual(model_spec.effective_media_prior_type, "roi")
+    self.assertEqual(model_spec.effective_rf_prior_type, "roi")
     self.assertIsNone(model_spec.roi_calibration_period)
     self.assertIsNone(model_spec.rf_roi_calibration_period)
     self.assertIsNone(model_spec.knots)
@@ -79,10 +79,10 @@ class ModelSpecTest(parameterized.TestCase):
       self, media_prior_type, rf_prior_type
   ):
     model_spec = spec.ModelSpec(
-        media_prior_type=media_prior_type, rf_prior_type=rf_prior_type
+        effective_media_prior_type=media_prior_type, effective_rf_prior_type=rf_prior_type
     )
-    self.assertEqual(model_spec.media_prior_type, media_prior_type)
-    self.assertEqual(model_spec.rf_prior_type, rf_prior_type)
+    self.assertEqual(model_spec.effective_media_prior_type, media_prior_type)
+    self.assertEqual(model_spec.effective_rf_prior_type, rf_prior_type)
 
   @parameterized.named_parameters(
       (
@@ -109,7 +109,7 @@ class ModelSpecTest(parameterized.TestCase):
   ):
     with self.assertRaisesWithLiteralMatch(ValueError, error_message):
       spec.ModelSpec(
-          media_prior_type=media_prior_type, rf_prior_type=rf_prior_type
+          effective_media_prior_type=media_prior_type, effective_rf_prior_type=rf_prior_type
       )
 
   def test_spec_inits_valid_roi_calibration_works(self):
@@ -191,7 +191,7 @@ class ModelSpecTest(parameterized.TestCase):
         " `media_prior_type` is 'roi'.",
     ):
       spec.ModelSpec(
-          media_prior_type="mroi",
+          effective_media_prior_type="mroi",
           roi_calibration_period=np.random.normal(size=shape),
       )
 
@@ -203,7 +203,7 @@ class ModelSpecTest(parameterized.TestCase):
         " `rf_prior_type` is 'roi'.",
     ):
       spec.ModelSpec(
-          rf_prior_type="coefficient",
+          effective_rf_prior_type="coefficient",
           rf_roi_calibration_period=np.random.normal(size=shape),
       )
 
