@@ -1181,9 +1181,9 @@ class InputDataBuilderTest(parameterized.TestCase):
         kpi_type=constants.NON_REVENUE
     )
     setter(builder, da)
-    with self.assertRaisesWithLiteralMatch(
+    with self.assertRaisesRegex(
         ValueError,
-        f'{component} was already set to {da}.',
+        f'{component} was already set to',
     ):
       setter(builder, xr.DataArray([10, 200, 3000], dims=[constants.GEO]))
 
@@ -1441,6 +1441,111 @@ class InputDataBuilderTest(parameterized.TestCase):
       self.assertEqual(builder.media_time_coords, expected_time)
     else:
       self.assertEqual(builder.time_coords, expected_time)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='population',
+          da_template=BASIC_POPULATION_DA,
+          setter=lambda builder, da: setattr(builder, 'population', da),
+          getter=lambda builder: builder.population,
+      ),
+      dict(
+          testcase_name='kpi',
+          da_template=BASIC_KPI_DA,
+          setter=lambda builder, da: setattr(builder, 'kpi', da),
+          getter=lambda builder: builder.kpi,
+      ),
+      dict(
+          testcase_name='controls',
+          da_template=BASIC_CONTROLS_DA,
+          setter=lambda builder, da: setattr(builder, 'controls', da),
+          getter=lambda builder: builder.controls,
+      ),
+      dict(
+          testcase_name='revenue_per_kpi',
+          da_template=BASIC_KPI_DA,
+          setter=lambda builder, da: setattr(builder, 'revenue_per_kpi', da),
+          getter=lambda builder: builder.revenue_per_kpi,
+      ),
+      dict(
+          testcase_name='non_media_treatments',
+          da_template=BASIC_NON_MEDIA_TREATMENTS_DA,
+          setter=lambda builder, da: setattr(
+              builder, 'non_media_treatments', da
+          ),
+          getter=lambda builder: builder.non_media_treatments,
+      ),
+      dict(
+          testcase_name='organic_media',
+          da_template=BASIC_ORGANIC_MEDIA_DA,
+          setter=lambda builder, da: setattr(builder, 'organic_media', da),
+          getter=lambda builder: builder.organic_media,
+      ),
+      dict(
+          testcase_name='organic_reach',
+          da_template=BASIC_ORGANIC_REACH_DA,
+          setter=lambda builder, da: setattr(builder, 'organic_reach', da),
+          getter=lambda builder: builder.organic_reach,
+      ),
+      dict(
+          testcase_name='organic_frequency',
+          da_template=BASIC_ORGANIC_FREQUENCY_DA,
+          setter=lambda builder, da: setattr(builder, 'organic_frequency', da),
+          getter=lambda builder: builder.organic_frequency,
+      ),
+      dict(
+          testcase_name='media',
+          da_template=BASIC_MEDIA_DA,
+          setter=lambda builder, da: setattr(builder, 'media', da),
+          getter=lambda builder: builder.media,
+      ),
+      dict(
+          testcase_name='media_spend',
+          da_template=BASIC_MEDIA_SPEND_DA,
+          setter=lambda builder, da: setattr(builder, 'media_spend', da),
+          getter=lambda builder: builder.media_spend,
+      ),
+      dict(
+          testcase_name='reach',
+          da_template=BASIC_REACH_DA,
+          setter=lambda builder, da: setattr(builder, 'reach', da),
+          getter=lambda builder: builder.reach,
+      ),
+      dict(
+          testcase_name='frequency',
+          da_template=BASIC_FREQUENCY_DA,
+          setter=lambda builder, da: setattr(builder, 'frequency', da),
+          getter=lambda builder: builder.frequency,
+      ),
+      dict(
+          testcase_name='rf_spend',
+          da_template=BASIC_RF_SPEND_DA,
+          setter=lambda builder, da: setattr(builder, 'rf_spend', da),
+          getter=lambda builder: builder.rf_spend,
+      ),
+  )
+  def test_setter_with_geo_coordinates_normalized(
+      self,
+      da_template: xr.DataArray,
+      setter: Callable[
+          [input_data_builder.InputDataBuilder, xr.DataArray], None
+      ],
+      getter: Callable[[input_data_builder.InputDataBuilder], xr.DataArray],
+  ):
+    da = da_template.copy()
+    da.coords[constants.GEO] = [111, 222, 333]
+
+    expected_da = da_template.copy()
+    expected_da.coords[constants.GEO] = ['111', '222', '333']
+
+    builder = input_data_builder.InputDataBuilder(kpi_type=constants.REVENUE)
+    setter(builder, da)
+    xr.testing.assert_equal(getter(builder), expected_da)
+    try:
+      xr.testing.assert_equal(getter(builder), da_template)
+      raise AssertionError("da_template was unexpectedly modified!")
+    except AssertionError:
+      pass
 
   @parameterized.named_parameters(
       dict(

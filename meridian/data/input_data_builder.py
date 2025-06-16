@@ -646,12 +646,13 @@ class InputDataBuilder(abc.ABC):
     """Normalizes the given `DataArray`'s coordinates in Meridian convention.
 
     Validates that time values are in the conventional Meridian format and
-    that geos have national name if national.
+    that geos have national name if national. If geo coordinates are not string-
+    typed, they will be converted to strings.
 
     Args:
       da: The DataArray to normalize.
-      time_dimension_name: The name of the time dimension. If None, the
-        will skip time normalization.
+      time_dimension_name: The name of the time dimension. If None, the will
+        skip time normalization.
 
     Returns:
       The normalized DataArray.
@@ -686,6 +687,11 @@ class InputDataBuilder(abc.ABC):
       da = da.assign_coords(
           {constants.GEO: [constants.NATIONAL_MODEL_DEFAULT_GEO_NAME]},
       )
+    else:
+      da = da.assign_coords(
+          {constants.GEO: da.coords[constants.GEO].astype(str)}
+      )
+
     return da
 
   def _validate_set(self, component: str, da: xr.DataArray):

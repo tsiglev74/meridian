@@ -1805,53 +1805,113 @@ class DataFrameInputDataBuilderTest(parameterized.TestCase):
     )
 
   def test_dataframe_data_loader_not_continuous_na_period_fails(self):
-    with self.assertRaisesWithLiteralMatch(
-        ValueError,
+    builder = data_frame_input_data_builder.DataFrameInputDataBuilder(
+        kpi_type=constants.NON_REVENUE
+    )
+
+    df = pd.DataFrame({
+        "geo": ["0", "0", "0", "0"],
+        "time": ["2021-01-11", "2021-01-12", "2021-01-13", "2021-01-14"],
+        "media_0": [1, 1, 1, 1],
+        "media_1": [1, 1, 1, 1],
+        "media_2": [1, 1, 1, 1],
+        "reach_0": [1, 1, 1, 1],
+        "reach_1": [1, 1, 1, 1],
+        "frequency_0": [1, 1, 1, 1],
+        "frequency_1": [1, 1, 1, 1],
+        "kpi": [None, 1, None, 1],
+        "revenue_per_kpi": [None, 1, None, 1],
+        "population": [None, 2, None, 1],
+        "control_0": [None, 1, None, 1],
+        "control_1": [None, 1, None, 1],
+        "media_spend_0": [None, 1, None, 1],
+        "media_spend_1": [None, 1, None, 1],
+        "media_spend_2": [None, 1, None, 1],
+        "rf_spend_0": [None, 2, None, 1],
+        "rf_spend_1": [None, 7, None, 1],
+    })
+
+    builder = (
+        builder.with_kpi(df)
+        .with_revenue_per_kpi(df)
+        .with_population(df)
+        .with_controls(df, control_cols=["control_0", "control_1"])
+    )
+
+    expected_error_message = (
         "The 'lagged media' period (period with 100% NA values in all"
         " non-media columns) ['2021-01-11' '2021-01-13'] is"
-        " not a continuous window starting from the earliest time period.",
+        " not a continuous window starting from the earliest time period."
+    )
+
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        expected_error_message,
     ):
-      builder = data_frame_input_data_builder.DataFrameInputDataBuilder(
-          kpi_type=constants.NON_REVENUE
-      )
-
-      df = pd.DataFrame({
-          "geo": ["0", "0", "0", "0"],
-          "time": ["2021-01-11", "2021-01-12", "2021-01-13", "2021-01-14"],
-          "media_0": [1, 1, 1, 1],
-          "media_1": [1, 1, 1, 1],
-          "media_2": [1, 1, 1, 1],
-          "reach_0": [1, 1, 1, 1],
-          "reach_1": [1, 1, 1, 1],
-          "frequency_0": [1, 1, 1, 1],
-          "frequency_1": [1, 1, 1, 1],
-          "kpi": [None, 1, None, 1],
-          "revenue_per_kpi": [None, 1, None, 1],
-          "population": [None, 2, None, 1],
-          "control_0": [None, 1, None, 1],
-          "control_1": [None, 1, None, 1],
-          "media_spend_0": [None, 1, None, 1],
-          "media_spend_1": [None, 1, None, 1],
-          "media_spend_2": [None, 1, None, 1],
-          "rf_spend_0": [None, 2, None, 1],
-          "rf_spend_1": [None, 7, None, 1],
-      })
-
-      builder.with_kpi(df).with_revenue_per_kpi(df).with_population(
-          df
-      ).with_controls(df, control_cols=["control_0", "control_1"]).with_media(
+      builder.with_media(
           df,
           ["media_0", "media_1", "media_2"],
           ["media_spend_0", "media_spend_1", "media_spend_2"],
           ["media_channel_0", "media_channel_1", "media_channel_2"],
           "time",
-      ).with_reach(
+      )
+
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        expected_error_message,
+    ):
+      builder.with_reach(
           df,
           ["reach_0", "reach_1"],
           ["frequency_0", "frequency_1"],
           ["rf_spend_0", "rf_spend_1"],
-          ["rf_ch_0", "rf_ch_1"],
-      ).build()
+          ["rf_channel_0", "rf_channel_1"],
+      )
+
+  def test_df_load_geos_normalized(self):
+    df = pd.DataFrame({
+        "geo": [111, 111, 222, 222],
+        "time": ["2021-01-11", "2021-01-12", "2021-01-11", "2021-01-12"],
+        "media_0": [1, 1, 1, 1],
+        "media_1": [1, 1, 1, 1],
+        "media_2": [1, 1, 1, 1],
+        "reach_0": [1, 1, 1, 1],
+        "reach_1": [1, 1, 1, 1],
+        "frequency_0": [1, 1, 1, 1],
+        "frequency_1": [1, 1, 1, 1],
+        "revenue": [1, 1, 1, 1],
+        "population": [2, 2, 1, 1],
+        "media_spend_0": [1, 1, 1, 1],
+        "media_spend_1": [1, 1, 1, 1],
+        "media_spend_2": [1, 1, 1, 1],
+        "rf_spend_0": [2, 2, 1, 1],
+        "rf_spend_1": [1, 7, 7, 1],
+    })
+
+    builder = data_frame_input_data_builder.DataFrameInputDataBuilder(
+        kpi_type=constants.REVENUE
+    )
+
+    data = (
+        builder.with_kpi(df, kpi_col="revenue")
+        .with_population(df)
+        .with_media(
+            df,
+            ["media_0", "media_1", "media_2"],
+            ["media_spend_0", "media_spend_1", "media_spend_2"],
+            ["media_channel_0", "media_channel_1", "media_channel_2"],
+        )
+        .with_reach(
+            df,
+            ["reach_0", "reach_1"],
+            ["frequency_0", "frequency_1"],
+            ["rf_spend_0", "rf_spend_1"],
+            ["rf_channel_0", "rf_channel_1"],
+        )
+        .build()
+    )
+
+    self.assertEqual(data.geo.values.tolist(), ["111", "222"])
 
 
 if __name__ == "__main__":
