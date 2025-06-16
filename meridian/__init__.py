@@ -16,7 +16,13 @@
 
 __version__ = "1.1.2"
 
+import logging
 
 from meridian import analysis
 from meridian import data
 from meridian import model
+
+try:
+  from meridian import mlflow  # pylint: disable=g-import-not-at-top
+except ImportError:
+  logging.warning("MLFlow is not installed.")

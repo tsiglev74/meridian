@@ -103,8 +103,6 @@ def autolog(
     _log_priors(self.model_spec)
     return mmm
 
-  safe_patch(FLAVOR_NAME, model.Meridian, "__init__", patch_meridian_init)
-
   def patch_prior_sampling(original: Callable[..., Any], self, *args, **kwargs):
     mlflow.log_param("sample_prior.n_draws", kwargs.get("n_draws", "default"))
     mlflow.log_param("sample_prior.seed", kwargs.get("seed", "default"))
@@ -138,14 +136,16 @@ def autolog(
       mlflow.log_metric("MAPE", get_metric("MAPE"))
       mlflow.log_metric("wMAPE", get_metric("wMAPE"))
 
-  safe_patch(FLAVOR_NAME, model.Meridian, "__init__", patch_meridian_init)
-  safe_patch(
+  mlflow.safe_patch(
+      FLAVOR_NAME, model.Meridian, "__init__", patch_meridian_init
+  )
+  mlflow.safe_patch(
       FLAVOR_NAME,
       prior_sampler.PriorDistributionSampler,
       "__call__",
       patch_prior_sampling,
   )
-  safe_patch(
+  mlflow.safe_patch(
       FLAVOR_NAME,
       posterior_sampler.PosteriorMCMCSampler,
       "__call__",
