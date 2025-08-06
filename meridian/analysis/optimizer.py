@@ -139,12 +139,12 @@ class OptimizationGrid:
     return self._grid_dataset
 
   @property
-  def spend_grid(self) -> np.ndarray:
+  def spend_grid(self) -> xr.DataArray:
     """The spend grid."""
     return self.grid_dataset.spend_grid
 
   @property
-  def incremental_outcome_grid(self) -> np.ndarray:
+  def incremental_outcome_grid(self) -> xr.DataArray:
     """The incremental outcome grid."""
     return self.grid_dataset.incremental_outcome_grid
 
@@ -231,10 +231,6 @@ class OptimizationGrid:
             spend_constraint_upper=spend_constraint_upper,
         )
     )
-    self.check_optimization_bounds(
-        lower_bound=optimization_lower_bound,
-        upper_bound=optimization_upper_bound,
-    )
     round_factor = _get_round_factor(budget, self.gtol)
     if round_factor != self.round_factor:
       warnings.warn(
@@ -244,7 +240,7 @@ class OptimizationGrid:
           ' It is only a problem when you use a much smaller budget, '
           ' for which the intended step size is smaller. '
       )
-    (spend_grid, incremental_outcome_grid) = self._trim_grid(
+    (spend_grid, incremental_outcome_grid) = self.trim_grids(
         spend_bound_lower=optimization_lower_bound,
         spend_bound_upper=optimization_upper_bound,
     )
@@ -267,10 +263,107 @@ class OptimizationGrid:
         },
     )
 
+  def trim_grids(
+      self,
+      spend_bound_lower: np.ndarray,
+      spend_bound_upper: np.ndarray,
+  ) -> tuple[xr.DataArray, xr.DataArray]:
+    """Trims the grids based on a more restricted spend bound.
+
+    Args:
+      spend_bound_lower: The lower bound of spend for each channel. Must be in
+        the same order as `self.channels`.
+      spend_bound_upper: The upper bound of spend for each channel. Must be in
+        the same order as `self.channels`.
+
+    Returns:
+      updated_spend: The updated spend grid with only valid spend values.
+      updated_incremental_outcome: The updated incremental outcome grid
+        containing only the corresponding incremental outcome values for the
+        updated spend grid.
+    """
+    self.check_optimization_bounds(
+        lower_bound=spend_bound_lower,
+        upper_bound=spend_bound_upper,
+    )
+    spend_grid = self.spend_grid
+    updated_spend = self.spend_grid.copy()
+    updated_incremental_outcome = self.incremental_outcome_grid.copy()
+
+    for ch in range(len(self.channels)):
+      valid_indices = np.where(
+          (spend_grid[:, ch] >= spend_bound_lower[ch])
+          & (spend_grid[:, ch] <= spend_bound_upper[ch])
+      )[0]
+      first_valid_index = valid_indices[0]
+      last_valid_index = valid_indices[-1]
+
+      # Move the smallest spend to the first row.
+      updated_spend[:, ch] = np.roll(
+          updated_spend[:, ch], shift=-first_valid_index
+      )
+      # Move the corresponding incremental outcome to the first row.
+      updated_incremental_outcome[:, ch] = np.roll(
+          updated_incremental_outcome[:, ch], shift=-first_valid_index
+      )
+
+      # Fill the invalid indices with NaN.
+      nan_indices = last_valid_index - first_valid_index + 1
+      updated_spend[nan_indices:, ch] = np.nan
+      updated_incremental_outcome[nan_indices:, ch] = np.nan
+
+    # Drop the rows with all NaN values.
+    updated_spend = updated_spend.dropna(dim=c.GRID_SPEND_INDEX, how='all')
+    updated_incremental_outcome = updated_incremental_outcome.dropna(
+        dim=c.GRID_SPEND_INDEX, how='all'
+    )
+
+    return (updated_spend, updated_incremental_outcome)
+
+  def check_optimization_bounds(
+      self,
+      lower_bound: np.ndarray,
+      upper_bound: np.ndarray,
+  ) -> None:
+    """Checks if the spend grid fits within the optimization bounds.
+
+    Args:
+      lower_bound: `np.ndarray` of shape `(n_channels,)` containing the lower
+        bound for each channel. Must be in the same order as `self.channels`.
+      upper_bound: `np.ndarray` of shape `(n_channels,)` containing the upper
+        bound for each channel. Must be in the same order as `self.channels`.
+
+    Raises:
+      ValueError: If the spend grid does not fit within the optimization bounds.
+    """
+    min_spend = np.min(self.spend_grid, axis=0)
+    max_spend = np.max(self.spend_grid, axis=0)
+    errors = []
+    for i, channel_min_spend in enumerate(min_spend.data):
+      if lower_bound[i] < channel_min_spend:
+        errors.append(
+            f'Lower bound {lower_bound[i]} for channel'
+            f' {self.channels[i]} is below the mimimum spend of the grid'
+            f' {channel_min_spend}.'
+        )
+    for i, channel_max_spend in enumerate(max_spend.data):
+      if upper_bound[i] > channel_max_spend:
+        errors.append(
+            f'Upper bound {upper_bound[i]} for channel'
+            f' {self.channels[i]} is above the maximum spend of the grid'
+            f' {channel_max_spend}.'
+        )
+
+    if errors:
+      raise ValueError(
+          'Spend allocation is not within the grid coverage:\n'
+          + '\n'.join(errors)
+      )
+
   def _grid_search(
       self,
-      spend_grid: np.ndarray,
-      incremental_outcome_grid: np.ndarray,
+      spend_grid: xr.DataArray,
+      incremental_outcome_grid: xr.DataArray,
       scenario: FixedBudgetScenario | FlexibleBudgetScenario,
   ) -> np.ndarray:
     """Hill-climbing search algorithm for budget optimization.
@@ -285,12 +378,9 @@ class OptimizationGrid:
       scenario: The optimization scenario with corresponding parameters.
 
     Returns:
-      optimal_spend: `np.ndarray` of dimension (`n_total_channels`) containing
-        the media spend that maximizes incremental outcome based on spend
-        constraints for all media and RF channels.
-      optimal_inc_outcome: `np.ndarray` of dimension (`n_total_channels`)
-        containing the post optimization incremental outcome per channel for all
-        media and RF channels.
+      `np.ndarray` of dimension (`n_total_channels`) containing the optimal
+      media spend that maximizes incremental outcome based on spend constraints
+      for all media and RF channels.
     """
     spend = spend_grid[0, :].copy()
     incremental_outcome = incremental_outcome_grid[0, :].copy()
@@ -337,97 +427,6 @@ class OptimizationGrid:
           decimals=8,
       )
     return spend_optimal
-
-  def _trim_grid(
-      self,
-      spend_bound_lower: np.ndarray,
-      spend_bound_upper: np.ndarray,
-  ) -> tuple[np.ndarray, np.ndarray]:
-    """Trim the grids based on a more restricted spend bound.
-
-    It is assumed that spend bounds are validated: their values are within the
-    grid coverage and they are rounded using this grid's round factor.
-
-    Args:
-      spend_bound_lower: The lower bound of spend for each channel. Must be in
-        the same order as `self.channels`.
-      spend_bound_upper: The upper bound of spend for each channel. Must be in
-        the same order as `self.channels`.
-
-    Returns:
-      updated_spend: The updated spend grid with valid spend values moved up to
-        the first row and invalid spend values filled with NaN.
-      updated_incremental_outcome: The updated incremental outcome grid with the
-        corresponding incremental outcome values moved up to the first row and
-        invalid incremental outcome values filled with NaN.
-    """
-    spend_grid = self.spend_grid
-    updated_spend = self.spend_grid.copy()
-    updated_incremental_outcome = self.incremental_outcome_grid.copy()
-
-    for ch in range(len(self.channels)):
-      valid_indices = np.where(
-          (spend_grid[:, ch] >= spend_bound_lower[ch])
-          & (spend_grid[:, ch] <= spend_bound_upper[ch])
-      )[0]
-      first_valid_index = valid_indices[0]
-      last_valid_index = valid_indices[-1]
-
-      # Move the smallest spend to the first row.
-      updated_spend[:, ch] = np.roll(
-          updated_spend[:, ch], shift=-first_valid_index
-      )
-      # Move the corresponding incremental outcome to the first row.
-      updated_incremental_outcome[:, ch] = np.roll(
-          updated_incremental_outcome[:, ch], shift=-first_valid_index
-      )
-
-      # Fill the invalid indices with NaN.
-      nan_indices = last_valid_index - first_valid_index + 1
-      updated_spend[nan_indices:, ch] = np.nan
-      updated_incremental_outcome[nan_indices:, ch] = np.nan
-
-    return (updated_spend, updated_incremental_outcome)
-
-  def check_optimization_bounds(
-      self,
-      lower_bound: np.ndarray,
-      upper_bound: np.ndarray,
-  ) -> None:
-    """Checks if the spend grid fits within the optimization bounds.
-
-    Args:
-      lower_bound: `np.ndarray` of shape `(n_channels,)` containing the lower
-        bound for each channel. Must be in the same order as `self.channels`.
-      upper_bound: `np.ndarray` of shape `(n_channels,)` containing the upper
-        bound for each channel. Must be in the same order as `self.channels`.
-
-    Raises:
-      ValueError: If the spend grid does not fit within the optimization bounds.
-    """
-    min_spend = np.min(self.spend_grid, axis=0)
-    max_spend = np.max(self.spend_grid, axis=0)
-    errors = []
-    for i, channel_min_spend in enumerate(min_spend.data):
-      if lower_bound[i] < channel_min_spend:
-        errors.append(
-            f'Lower bound {lower_bound[i]} for channel'
-            f' {self.channels[i]} is below the mimimum spend of the grid'
-            f' {channel_min_spend}.'
-        )
-    for i, channel_max_spend in enumerate(max_spend.data):
-      if upper_bound[i] > channel_max_spend:
-        errors.append(
-            f'Upper bound {upper_bound[i]} for channel'
-            f' {self.channels[i]} is above the maximum spend of the grid'
-            f' {channel_max_spend}.'
-        )
-
-    if errors:
-      raise ValueError(
-          'Spend allocation is not within the grid coverage:\n'
-          + '\n'.join(errors)
-      )
 
 
 @dataclasses.dataclass(frozen=True)

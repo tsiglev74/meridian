@@ -1996,6 +1996,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     np.testing.assert_array_equal(spend.optimized, expected_optimal_spend)
 
   def test_trim_grid(self):
+    channels = np.array(['ch1', 'ch2', 'ch3', 'ch4', 'ch5'])
     grid = optimizer.OptimizationGrid(
         historical_spend=mock.MagicMock(),
         use_kpi=False,
@@ -2008,24 +2009,38 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         optimal_frequency=None,
         selected_times=mock.MagicMock(),
         _grid_dataset=mock.MagicMock(
-            channel=mock.MagicMock(
-                data=np.array(['ch1', 'ch2', 'ch3', 'ch4', 'ch5'])
+            channel=mock.MagicMock(data=channels),
+            spend_grid=xr.DataArray(
+                np.array([
+                    [100, 0, 300, 0, 200],
+                    [200, 100, 400, 100, 300],
+                    [300, 200, 500, 200, np.nan],
+                    [400, 300, np.nan, np.nan, np.nan],
+                    [500, np.nan, np.nan, np.nan, np.nan],
+                ]),
+                coords={
+                    c.GRID_SPEND_INDEX: np.arange(0, 5),
+                    c.CHANNEL: channels,
+                },
+                dims=[c.GRID_SPEND_INDEX, c.CHANNEL],
             ),
-            spend_grid=np.array([
-                [100, 0, 300, 0, 200],
-                [200, 100, 400, 100, 300],
-                [300, 200, 500, 200, np.nan],
-                [400, 300, np.nan, np.nan, np.nan],
-            ]),
-            incremental_outcome_grid=np.array([
-                [1.1, 0.0, 3.3, 0.0, 5.2],
-                [1.2, 2.1, 3.4, 4.1, 5.3],
-                [1.3, 2.2, 3.5, 4.2, np.nan],
-                [1.4, 2.3, np.nan, np.nan, np.nan],
-            ]),
+            incremental_outcome_grid=xr.DataArray(
+                np.array([
+                    [1.1, 0.0, 3.3, 0.0, 5.2],
+                    [1.2, 2.1, 3.4, 4.1, 5.3],
+                    [1.3, 2.2, 3.5, 4.2, np.nan],
+                    [1.4, 2.3, np.nan, np.nan, np.nan],
+                    [1.5, np.nan, np.nan, np.nan, np.nan],
+                ]),
+                coords={
+                    c.GRID_SPEND_INDEX: np.arange(0, 5),
+                    c.CHANNEL: channels,
+                },
+                dims=[c.GRID_SPEND_INDEX, c.CHANNEL],
+            ),
         ),
     )
-    (updated_spend, updated_incremental_outcome) = grid._trim_grid(
+    (updated_spend, updated_incremental_outcome) = grid.trim_grids(
         spend_bound_lower=np.array([100, 100, 400, 0, 200]),
         spend_bound_upper=np.array([400, 300, 400, 100, 300]),
     )
