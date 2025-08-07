@@ -172,6 +172,12 @@ if _BACKEND == config.Backend.JAX:
   stack = ops.stack
   zeros = ops.zeros
   ones = ops.ones
+  einsum = ops.einsum
+  repeat = ops.repeat
+  where = ops.where
+
+  float32 = ops.float32
+  bool_ = ops.bool_
 
 elif _BACKEND == config.Backend.TENSORFLOW:
   import tensorflow as tf_backend
@@ -182,12 +188,18 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   tfd = tfp.distributions
   _convert_to_tensor = tf_backend.convert_to_tensor
 
-  # Standardized Public API (Aligned with NumPy names)
+  # Standardized Public API
   arange = _tf_arange
   concatenate = ops.concat
   stack = ops.stack
   zeros = ops.zeros
   ones = ops.ones
+  einsum = ops.einsum
+  repeat = ops.repeat
+  where = ops.where
+
+  float32 = ops.float32
+  bool_ = ops.bool
 
 else:
   raise ValueError(f"Unsupported backend: {_BACKEND}")
