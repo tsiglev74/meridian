@@ -148,6 +148,11 @@ def _tf_arange(
     return tf.cast(result, resolved_dtype)
 
 
+def _jax_cast(x: Any, dtype: Any) -> "_jax.Array":
+  """JAX implementation for cast."""
+  return x.astype(dtype)
+
+
 # --- Backend Initialization ---
 _BACKEND = config.get_backend()
 
@@ -161,9 +166,15 @@ if _BACKEND == config.Backend.JAX:
   import jax.numpy as jax_ops
   import tensorflow_probability.substrates.jax as tfp_jax
 
+  class _JaxErrors:
+    ResourceExhaustedError = MemoryError  # pylint: disable=invalid-name
+
   ops = jax_ops
+  errors = _JaxErrors()
   Tensor = jax.Array
   tfd = tfp_jax.distributions
+  experimental = tfp_jax.experimental
+  random = tfp_jax.random
   _convert_to_tensor = ops.asarray
 
   # Standardized Public API
@@ -172,34 +183,56 @@ if _BACKEND == config.Backend.JAX:
   stack = ops.stack
   zeros = ops.zeros
   ones = ops.ones
-  einsum = ops.einsum
   repeat = ops.repeat
   where = ops.where
+  transpose = ops.transpose
+  broadcast_to = ops.broadcast_to
+  cast = _jax_cast
+
+  einsum = ops.einsum
+  exp = ops.exp
+  reduce_sum = ops.sum
 
   float32 = ops.float32
   bool_ = ops.bool_
+  newaxis = ops.newaxis
+
+  function = jax.jit
 
 elif _BACKEND == config.Backend.TENSORFLOW:
   import tensorflow as tf_backend
   import tensorflow_probability as tfp
 
   ops = tf_backend
-  Tensor = tf_backend.Tensor
-  tfd = tfp.distributions
-  _convert_to_tensor = tf_backend.convert_to_tensor
+  errors = ops.errors
 
-  # Standardized Public API
+  Tensor = tf_backend.Tensor
+
+  tfd = tfp.distributions
+  experimental = tfp.experimental
+  random = tfp.random
+
+  _convert_to_tensor = tf_backend.convert_to_tensor
   arange = _tf_arange
   concatenate = ops.concat
   stack = ops.stack
   zeros = ops.zeros
   ones = ops.ones
-  einsum = ops.einsum
   repeat = ops.repeat
   where = ops.where
+  transpose = ops.transpose
+  broadcast_to = ops.broadcast_to
+  cast = ops.cast
+
+  einsum = ops.einsum
+  exp = ops.math.exp
+  reduce_sum = ops.reduce_sum
 
   float32 = ops.float32
   bool_ = ops.bool
+  newaxis = ops.newaxis
+
+  function = ops.function
 
 else:
   raise ValueError(f"Unsupported backend: {_BACKEND}")
