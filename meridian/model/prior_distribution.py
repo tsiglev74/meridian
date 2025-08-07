@@ -975,4 +975,17 @@ def distributions_are_equal(
   if constants.DISTRIBUTION in a_params or constants.DISTRIBUTION in b_params:
     return False
 
-  return a_params == b_params
+  if a_params.keys() != b_params.keys():
+    return False
+
+  for key in a_params.keys():
+    if isinstance(
+        a_params[key], (tf.Tensor, np.ndarray, float, int)
+    ) and isinstance(b_params[key], (tf.Tensor, np.ndarray, float, int)):
+      if not tf.experimental.numpy.allclose(a_params[key], b_params[key]):
+        return False
+    else:
+      if a_params[key] != b_params[key]:
+        return False
+
+  return True
