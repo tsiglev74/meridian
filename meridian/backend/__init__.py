@@ -173,6 +173,7 @@ if _BACKEND == config.Backend.JAX:
   errors = _JaxErrors()
   Tensor = jax.Array
   tfd = tfp_jax.distributions
+  bijectors = tfp_jax.bijectors
   experimental = tfp_jax.experimental
   random = tfp_jax.random
   _convert_to_tensor = ops.asarray
@@ -198,6 +199,7 @@ if _BACKEND == config.Backend.JAX:
   newaxis = ops.newaxis
 
   function = jax.jit
+  allclose = ops.allclose
 
 elif _BACKEND == config.Backend.TENSORFLOW:
   import tensorflow as tf_backend
@@ -209,6 +211,7 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   Tensor = tf_backend.Tensor
 
   tfd = tfp.distributions
+  bijectors = tfp.bijectors
   experimental = tfp.experimental
   random = tfp.random
 
@@ -233,6 +236,7 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   newaxis = ops.newaxis
 
   function = ops.function
+  allclose = ops.experimental.numpy.allclose
 
 else:
   raise ValueError(f"Unsupported backend: {_BACKEND}")
