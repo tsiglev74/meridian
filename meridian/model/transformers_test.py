@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from absl.testing import absltest
+from absl.testing import parameterized
 from meridian.model import transformers
 import numpy as np
 import tensorflow as tf
@@ -21,7 +22,7 @@ import tensorflow_probability as tfp
 tfd = tfp.distributions
 
 
-class MediaTransformerTest(absltest.TestCase):
+class MediaTransformerTest(parameterized.TestCase):
 
   def setUp(self):
     super().setUp()
@@ -78,6 +79,36 @@ class MediaTransformerTest(absltest.TestCase):
         tf.where(transformed_media == 0, np.nan, transformed_media), axis=[0, 1]
     )
     tf.debugging.assert_near(median, np.ones(self._n_media_channels))
+
+  @parameterized.named_parameters(
+      dict(testcase_name="all_zeros", channel_fill_value=0.0),
+      dict(testcase_name="all_nans", channel_fill_value=np.nan),
+  )
+  def test_media_with_invalid_channel_raises_error(self, channel_fill_value):
+    media_with_invalid = self._media1.numpy()
+    media_with_invalid[..., 0] = channel_fill_value
+    media_with_invalid = tf.convert_to_tensor(media_with_invalid)
+    with self.assertRaisesRegex(
+        ValueError,
+        "MediaTransformer has a NaN population-scaled non-zero median",
+    ):
+      transformers.MediaTransformer(
+          media=media_with_invalid, population=self._population
+      )
+
+  def test_media_with_mixed_zeros_and_nans_raises_error(self):
+    media_with_mixed = self._media1.numpy()
+    # Set first half of times to 0 and second half to NaN for the first channel.
+    media_with_mixed[:, : self._n_media_times // 2, 0] = 0.0
+    media_with_mixed[:, self._n_media_times // 2 :, 0] = np.nan
+    media_with_mixed = tf.convert_to_tensor(media_with_mixed)
+    with self.assertRaisesRegex(
+        ValueError,
+        "MediaTransformer has a NaN population-scaled non-zero median",
+    ):
+      transformers.MediaTransformer(
+          media=media_with_mixed, population=self._population
+      )
 
 
 class CenteringAndScalingTransformerTest(absltest.TestCase):
