@@ -5209,9 +5209,11 @@ class AnalyzerOrganicMediaTest(tf.test.TestCase, parameterized.TestCase):
         "organic_media_2",
         "organic_media_3",
     }
+    expected_organic_rf = {"organic_rf_ch_0"}
     self.assertTrue(expected_paid_media.issubset(all_channels_present))
     self.assertTrue(expected_rf.issubset(all_channels_present))
     self.assertTrue(expected_organic_media.issubset(all_channels_present))
+    self.assertTrue(expected_organic_rf.issubset(all_channels_present))
     self.assertSetEqual(
         set(
             hill_table[hill_table[constants.CHANNEL_TYPE] == constants.MEDIA][
@@ -5236,52 +5238,82 @@ class AnalyzerOrganicMediaTest(tf.test.TestCase, parameterized.TestCase):
         ),
         expected_organic_media,
     )
+    self.assertSetEqual(
+        set(
+            hill_table[
+                hill_table[constants.CHANNEL_TYPE] == constants.ORGANIC_RF
+            ][constants.CHANNEL].unique()
+        ),
+        expected_organic_rf,
+    )
     self.assertTrue(hist_df.index.is_unique)
 
-  def test_hill_curves_curve_data_correct(self):
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="organic_media_test",
+          channel_name="organic_media_1",
+          expected_channel_type=constants.ORGANIC_MEDIA,
+      ),
+      dict(
+          testcase_name="organic_rf_test",
+          channel_name="organic_rf_ch_0",
+          expected_channel_type=constants.ORGANIC_RF,
+      ),
+  )
+  def test_hill_curves_curve_data_correct(
+      self, channel_name, expected_channel_type
+  ):
     hill_table = self.analyzer_non_paid.hill_curves()
 
-    organic_channel = "organic_media_1"
-    organic_df = (
+    df = (
         hill_table[
-            (hill_table[constants.CHANNEL] == organic_channel)
+            (hill_table[constants.CHANNEL] == channel_name)
             & (hill_table[constants.DISTRIBUTION] == constants.POSTERIOR)
         ]
         .sort_values(constants.MEDIA_UNITS)
         .dropna(subset=[constants.MEAN])
     )
 
-    self.assertFalse(organic_df.empty)
-    self.assertEqual(
-        organic_df[constants.CHANNEL_TYPE].iloc[0], constants.ORGANIC_MEDIA
-    )
-    self.assertTrue(organic_df[constants.MEAN].is_monotonic_increasing)
-    self.assertLessEqual(organic_df[constants.MEAN].iloc[-1], 1.0)
-    self.assertGreaterEqual(organic_df[constants.MEAN].iloc[0], 0.0)
-    self.assertLess(organic_df[constants.MEDIA_UNITS].iloc[0], 0.1)
-    self.assertAlmostEqual(organic_df[constants.MEAN].iloc[0], 0.0, delta=1e-3)
+    self.assertFalse(df.empty)
+    self.assertEqual(df[constants.CHANNEL_TYPE].iloc[0], expected_channel_type)
+    self.assertTrue(df[constants.MEAN].is_monotonic_increasing)
+    self.assertLessEqual(df[constants.MEAN].iloc[-1], 1.0)
+    self.assertGreaterEqual(df[constants.MEAN].iloc[0], 0.0)
+    self.assertLess(df[constants.MEDIA_UNITS].iloc[0], 0.1)
+    self.assertAlmostEqual(df[constants.MEAN].iloc[0], 0.0, delta=1e-3)
 
-  def test_hill_curves_histogram_data_correct(self):
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="organic_media_test",
+          channel_name="organic_media_0",
+          expected_channel_type=constants.ORGANIC_MEDIA,
+      ),
+      dict(
+          testcase_name="organic_rf_test",
+          channel_name="organic_rf_ch_0",
+          expected_channel_type=constants.ORGANIC_RF,
+      ),
+  )
+  def test_hill_curves_histogram_data_correct(
+      self, channel_name, expected_channel_type
+  ):
     n_bins = 25
     hill_table = self.analyzer_non_paid.hill_curves(n_bins=n_bins)
 
-    organic_channel = "organic_media_0"
-    organic_hist_df = hill_table[
-        hill_table[constants.CHANNEL] == organic_channel
-    ].dropna(subset=[constants.COUNT_HISTOGRAM])
+    hist_df = hill_table[hill_table[constants.CHANNEL] == channel_name].dropna(
+        subset=[constants.COUNT_HISTOGRAM]
+    )
 
-    self.assertFalse(organic_hist_df.empty)
-    self.assertLen(organic_hist_df, n_bins)
+    self.assertFalse(hist_df.empty)
+    self.assertLen(hist_df, n_bins)
     self.assertEqual(
-        organic_hist_df[constants.CHANNEL_TYPE].iloc[0], constants.ORGANIC_MEDIA
+        hist_df[constants.CHANNEL_TYPE].iloc[0], expected_channel_type
     )
-    self.assertTrue((organic_hist_df[constants.COUNT_HISTOGRAM] >= 0).all())
-    self.assertTrue(
-        (organic_hist_df[constants.SCALED_COUNT_HISTOGRAM] <= 1.0001).all()
-    )
+    self.assertTrue((hist_df[constants.COUNT_HISTOGRAM] >= 0).all())
+    self.assertTrue((hist_df[constants.SCALED_COUNT_HISTOGRAM] <= 1.0001).all())
     np.testing.assert_allclose(
-        organic_hist_df[constants.START_INTERVAL_HISTOGRAM].iloc[1:].values,
-        organic_hist_df[constants.END_INTERVAL_HISTOGRAM].iloc[:-1].values,
+        hist_df[constants.START_INTERVAL_HISTOGRAM].iloc[1:].values,
+        hist_df[constants.END_INTERVAL_HISTOGRAM].iloc[:-1].values,
         atol=1e-6,
         err_msg="Histogram bin start/end edges do not align correctly.",
     )

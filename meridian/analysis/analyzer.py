@@ -4267,7 +4267,8 @@ class Analyzer:
     Returns:
       A DataFrame with data needed to plot the Hill curves, with columns:
 
-      *   `channel`: `media`, `rf`, or `organic_media` channel name.
+      *   `channel`: `media`, `rf`, `organic_media`, or `organic_rf` channel
+      name.
       *   `media_units`: Media (for `media` channels) or average frequency (for
           `rf` channels) units.
       *   `distribution`: Indication of `posterior` or `prior` draw.
@@ -4276,12 +4277,12 @@ class Analyzer:
       *   `ci_lo`: Lower bound of the credible interval of the value of the Hill
           function.
       *   `mean`: Point-wise mean of the value of the Hill function per draw.
-      *   channel_type: Indication of a `media`, `rf`, or `organic_media`
-          channel.
+      *   channel_type: Indication of a `media`, `rf`, `organic_media`
+          channel, or `organic_rf`.
 
     Raises:
       ValueError: If `channel_type` is not one of the recognized constants
-      `media`, `rf`, or `organic_media`.
+      `media`, `rf`, `organic_media`, or `organic_rf`.
     """
     if (
         channel_type == constants.MEDIA
@@ -4319,10 +4320,23 @@ class Analyzer:
           np.array(self._meridian.organic_media_tensors.organic_media_scaled),
           axis=(0, 1),
       )
+    elif (
+        channel_type == constants.ORGANIC_RF
+        and self._meridian.input_data.organic_rf_channel is not None
+    ):
+      ec = constants.EC_ORF
+      slope = constants.SLOPE_ORF
+      channels = self._meridian.input_data.organic_rf_channel.values
+      transformer = None
+      linspace_max_values = np.max(
+          np.array(self._meridian.organic_rf_tensors.organic_frequency),
+          axis=(0, 1),
+      )
     else:
       raise ValueError(
           f"Unsupported channel type: {channel_type} or the requested type of"
-          " channels (`media`, `rf`, or `organic_media`) are not present."
+          " channels (`media`, `rf`, `organic_media`, or `organic_rf`) are not"
+          " present."
       )
     linspace = np.linspace(
         0,
@@ -4418,7 +4432,8 @@ class Analyzer:
     """Calculates hill histogram dataframe for a given channel type's values.
 
     Args:
-      channel_type: The type of channel (e.g., 'rf', 'media', 'organic_media').
+      channel_type: The type of channel (e.g., 'rf', 'media', 'organic_media',
+        'organic_rf').
       data_to_histogram: The 2D tensor (observations, channels). containing the
         data whose distribution needs to be histogrammed for each channel.
       channel_names: The names corresponding to the channels in
@@ -4552,6 +4567,21 @@ class Analyzer:
         )
         df_list.append(pd.DataFrame(organic_media_hist_data))
 
+    # Organic RF.
+    if self._meridian.input_data.organic_rf_channel is not None:
+      frequency = self._meridian.organic_rf_tensors.organic_frequency
+      if frequency is not None:
+        reshaped_frequency = tf.reshape(
+            frequency,
+            (n_geos * n_media_times, self._meridian.n_organic_rf_channels),
+        )
+        organic_rf_hist_data = self._get_channel_hill_histogram_dataframe(
+            channel_type=constants.ORGANIC_RF,
+            data_to_histogram=reshaped_frequency,
+            channel_names=self._meridian.input_data.organic_rf_channel.values,
+            n_bins=n_bins,
+        )
+        df_list.append(pd.DataFrame(organic_rf_hist_data))
     return pd.concat(df_list, ignore_index=True)
 
   def hill_curves(
@@ -4604,6 +4634,7 @@ class Analyzer:
         (self._meridian.n_media_channels, constants.MEDIA),
         (self._meridian.n_rf_channels, constants.RF),
         (self._meridian.n_organic_media_channels, constants.ORGANIC_MEDIA),
+        (self._meridian.n_organic_rf_channels, constants.ORGANIC_RF),
     ]:
       if n_channels > 0:
         hill_df = self._get_hill_curves_dataframe(
