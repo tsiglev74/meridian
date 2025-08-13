@@ -989,7 +989,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     np.testing.assert_allclose(new_frequency, expected_frequency)
 
   @mock.patch.object(optimizer.BudgetOptimizer, '_create_grids', autospec=True)
-  @mock.patch.object(optimizer, '_get_round_factor', autospec=True)
+  @mock.patch.object(optimizer, 'get_round_factor', autospec=True)
   def test_optimization_grid(self, mock_get_round_factor, mock_create_grids):
     expected_spend_grid = np.array(
         [
@@ -4067,7 +4067,7 @@ class OptimizerHelperTest(parameterized.TestCase):
       gtol,
       expected_round_factor,
   ):
-    round_factor = optimizer._get_round_factor(budget, gtol)
+    round_factor = optimizer.get_round_factor(budget, gtol)
     self.assertEqual(round_factor, expected_round_factor)
 
   @parameterized.named_parameters(
@@ -4103,7 +4103,7 @@ class OptimizerHelperTest(parameterized.TestCase):
       error_message,
   ):
     with self.assertRaisesWithLiteralMatch(ValueError, error_message):
-      optimizer._get_round_factor(budget, gtol)
+      optimizer.get_round_factor(budget, gtol)
 
   @parameterized.named_parameters(
       {

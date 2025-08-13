@@ -40,6 +40,10 @@ __all__ = [
     'BudgetOptimizer',
     'OptimizationGrid',
     'OptimizationResults',
+    'FixedBudgetScenario',
+    'FlexibleBudgetScenario',
+    'get_optimization_bounds',
+    'get_round_factor',
 ]
 
 # Disable max row limitations in Altair.
@@ -231,7 +235,7 @@ class OptimizationGrid:
             spend_constraint_upper=spend_constraint_upper,
         )
     )
-    round_factor = _get_round_factor(budget, self.gtol)
+    round_factor = get_round_factor(budget, self.gtol)
     if round_factor != self.round_factor:
       warnings.warn(
           'Optimization accuracy may suffer owing to budget level differences.'
@@ -1847,7 +1851,7 @@ class BudgetOptimizer:
       )
       return False
 
-    round_factor = _get_round_factor(budget, gtol)
+    round_factor = get_round_factor(budget, gtol)
     if round_factor != optimization_grid.round_factor:
       warnings.warn(
           'Optimization accuracy may suffer owing to budget level differences.'
@@ -1990,7 +1994,7 @@ class BudgetOptimizer:
         pct_of_spend=pct_of_spend,
     )
     spend = budget * valid_pct_of_spend
-    round_factor = _get_round_factor(budget, gtol)
+    round_factor = get_round_factor(budget, gtol)
     (optimization_lower_bound, optimization_upper_bound) = (
         get_optimization_bounds(
             n_channels=n_paid_channels,
@@ -2802,6 +2806,30 @@ def get_optimization_bounds(
   return (lower, upper)
 
 
+def get_round_factor(budget: float, gtol: float) -> int:
+  """Gets the number of integer digits to round off of budget.
+
+  Args:
+    budget: Float number for total advertising budget.
+    gtol: Float indicating the acceptable relative error for the budget used in
+      the grid setup. The budget will be rounded by `10*n`, where `n` is the
+      smallest int such that `(budget - rounded_budget) <= (budget * gtol)`.
+      `gtol` must be less than 1.
+
+  Returns:
+    Integer number of digits to round budget to.
+  """
+  tolerance = budget * gtol
+  if gtol >= 1.0:
+    raise ValueError('gtol must be less than one.')
+  elif budget <= 0.0:
+    raise ValueError('`budget` must be greater than zero.')
+  elif tolerance < 1.0:
+    return 0
+  else:
+    return -int(math.log10(tolerance)) - 1
+
+
 def _validate_budget(
     fixed_budget: bool,
     budget: float | None,
@@ -2833,30 +2861,6 @@ def _validate_budget(
           'Must specify only one of `target_roi` or `target_mroi` for'
           'flexible budget optimization.'
       )
-
-
-def _get_round_factor(budget: float, gtol: float) -> int:
-  """Function for obtaining number of integer digits to round off of budget.
-
-  Args:
-    budget: float total advertising budget.
-    gtol: float indicating the acceptable relative error for the udget used in
-      the grid setup. The budget will be rounded by 10*n, where n is the
-      smallest int such that (budget - rounded_budget) is less than or equal to
-      (budget * gtol). gtol must be less than 1.
-
-  Returns:
-    int number of integer digits to round budget to.
-  """
-  tolerance = budget * gtol
-  if gtol >= 1.0:
-    raise ValueError('gtol must be less than one.')
-  elif budget <= 0.0:
-    raise ValueError('`budget` must be greater than zero.')
-  elif tolerance < 1.0:
-    return 0
-  else:
-    return -int(math.log10(tolerance)) - 1
 
 
 def _exceeds_optimization_constraints(
