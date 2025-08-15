@@ -16,6 +16,7 @@
 
 import abc
 from meridian import backend
+from meridian import constants
 
 
 __all__ = [
@@ -30,6 +31,8 @@ __all__ = [
 def compute_decay_weights(
     alpha: backend.Tensor,
     l_range: backend.Tensor,
+    window_size: int,
+    decay_function: str = constants.GEOMETRIC_DECAY,
     normalize: bool = True,
 ) -> backend.Tensor:
   """Computes decay weights using geometric decay.
@@ -41,14 +44,26 @@ def compute_decay_weights(
       alpha: The parameter for the adstock decay function.
       l_range: A 1D tensor representing the lag range, e.g., `[w-1, w-2, ...,
         0]`.
+      window_size: The number of time periods that go into the adstock weighted
+        average for each output time period.
+      decay_function: String indicating the decay function to use for the
+        Adstock calculation. Allowed values are 'geometric' and 'binomial'.
+        Default is 'geometric'.
       normalize: A boolean indicating whether to normalize the weights.
 
   Returns:
       A tensor of weights with a shape of `(*alpha.shape, len(l_range))`.
   """
+  expanded_alpha = backend.ops.expand_dims(alpha, -1)
+  match decay_function:
+    case constants.GEOMETRIC_DECAY:
+      weights = expanded_alpha**l_range
+    case constants.BINOMIAL_DECAY:
+      mapped_alpha_binomial = _map_alpha_for_binomial_decay(expanded_alpha)
+      weights = (1 - l_range / window_size) ** mapped_alpha_binomial
+    case _:
+      raise ValueError(f'Unsupported decay function: {decay_function}')
 
-  base_tensor = backend.ops.expand_dims(alpha, -1)
-  weights = base_tensor**l_range
   if normalize:
     normalization_factors = backend.ops.reduce_sum(
         weights, axis=-1, keepdims=True
@@ -91,6 +106,7 @@ def _adstock(
     alpha: backend.Tensor,
     max_lag: int,
     n_times_output: int,
+    decay_function: str = constants.GEOMETRIC_DECAY,
 ) -> backend.Tensor:
   """Computes the Adstock function."""
   _validate_arguments(
@@ -135,8 +151,21 @@ def _adstock(
     window_list[i] = media[..., i : i + n_times_output, :]
   windowed = backend.ops.stack(window_list)
   l_range = backend.arange(window_size - 1, -1, -1, dtype=backend.float32)
-  weights = compute_decay_weights(alpha=alpha, l_range=l_range, normalize=True)
+  weights = compute_decay_weights(
+      alpha=alpha,
+      l_range=l_range,
+      window_size=window_size,
+      decay_function=decay_function,
+      normalize=True,
+  )
   return backend.ops.einsum('...mw,w...gtm->...gtm', weights, windowed)
+
+
+def _map_alpha_for_binomial_decay(x: backend.Tensor):
+  # Map x -> 1/x - 1 to map [0, 1] to [0, +inf].
+  # 0 -> +inf is a valid mapping and reflects the "no adstock" case.
+
+  return 1 / x - 1
 
 
 def _hill(
@@ -176,9 +205,15 @@ class AdstockHillTransformer(metaclass=abc.ABCMeta):
 
 
 class AdstockTransformer(AdstockHillTransformer):
-  """Computes the Adstock transformation of media."""
+  """Class to compute the Adstock transformation of media."""
 
-  def __init__(self, alpha: backend.Tensor, max_lag: int, n_times_output: int):
+  def __init__(
+      self,
+      alpha: backend.Tensor,
+      max_lag: int,
+      n_times_output: int,
+      decay_function: str = constants.GEOMETRIC_DECAY,
+  ):
     """Initializes this transformer based on Adstock function parameters.
 
     Args:
@@ -194,10 +229,14 @@ class AdstockTransformer(AdstockHillTransformer):
         correspond to the most recent time periods of the media argument. For
         example, `media[..., -n_times_output:, :]` represents the media
         execution of the output weeks.
+      decay_function: String indicating the decay function to use for the
+        Adstock calculation. Allowed values are 'geometric' and 'binomial'.
+        Default is 'geometric'.
     """
     self._alpha = alpha
     self._max_lag = max_lag
     self._n_times_output = n_times_output
+    self._decay_function = decay_function
 
   def forward(self, media: backend.Tensor) -> backend.Tensor:
     """Computes the Adstock transformation of a given `media` tensor.
@@ -226,6 +265,7 @@ class AdstockTransformer(AdstockHillTransformer):
         alpha=self._alpha,
         max_lag=self._max_lag,
         n_times_output=self._n_times_output,
+        decay_function=self._decay_function,
     )
 
 

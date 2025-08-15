@@ -25,7 +25,7 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 * Add aspline and other helper functions for AKS algorithm to core library.
 * Fix numerical stability of Adstock computation around `alpha = 1`.
-
+* Add `binomial` decay option to Adstock.
 * Make `trim_grids()` a public method of `OptimizationGrid` and update it to
   remove rows of NaNs.
 * Add organic RF support for adstock decay in analyzer.

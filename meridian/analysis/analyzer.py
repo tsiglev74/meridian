@@ -914,6 +914,9 @@ class Analyzer:
       Pandas DataFrame containing the channel, time_units, distribution, ci_hi,
       ci_lo, and mean decayed effects for either media or RF channel types.
     """
+    window_size = min(
+        self._meridian.model_spec.max_lag + 1, self._meridian.n_media_times
+    )
     if channel_type == constants.MEDIA:
       prior = self._meridian.inference_data.prior.alpha_m.values[0]
       posterior = np.reshape(
@@ -944,10 +947,10 @@ class Analyzer:
       )
 
     decayed_effect_prior = adstock_hill.compute_decay_weights(
-        alpha=tf.convert_to_tensor(
-            prior[np.newaxis, ...], dtype=tf.float32
-        ),
+        alpha=tf.convert_to_tensor(prior[np.newaxis, ...], dtype=tf.float32),
         l_range=tf.convert_to_tensor(l_range, dtype=tf.float32),
+        window_size=window_size,
+        decay_function=self._meridian.model_spec.adstock_decay_function,
         normalize=False,
     )
     decayed_effect_posterior = adstock_hill.compute_decay_weights(
@@ -955,6 +958,8 @@ class Analyzer:
             posterior[np.newaxis, ...], dtype=tf.float32
         ),
         l_range=tf.convert_to_tensor(l_range, dtype=tf.float32),
+        window_size=window_size,
+        decay_function=self._meridian.model_spec.adstock_decay_function,
         normalize=False,
     )
 

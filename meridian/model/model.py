@@ -1285,6 +1285,7 @@ class Meridian:
         alpha=alpha,
         max_lag=self.model_spec.max_lag,
         n_times_output=n_times_output,
+        decay_function=self.model_spec.adstock_decay_function,
     )
     hill_transformer = adstock_hill.HillTransformer(
         ec=ec,
@@ -1344,6 +1345,7 @@ class Meridian:
         alpha=alpha,
         max_lag=self.model_spec.max_lag,
         n_times_output=n_times_output,
+        decay_function=self.model_spec.adstock_decay_function,
     )
     adj_frequency = hill_transformer.forward(frequency)
     rf_out = adstock_transformer.forward(reach * adj_frequency)
