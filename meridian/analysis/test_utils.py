@@ -3142,6 +3142,7 @@ def generate_hill_curves_dataframe() -> pd.DataFrame:
       [f"ch_{i}" for i in range(3)]
       + [f"rf_ch_{i}" for i in range(2)]
       + [f"organic_ch_{i}" for i in range(2)]
+      + [f"organic_rf_ch_{i}" for i in range(1)]
   )
   channel_array = []
   channel_type_array = []
@@ -3154,6 +3155,8 @@ def generate_hill_curves_dataframe() -> pd.DataFrame:
         channel_type_array.append(c.RF)
       elif channel_name.startswith("organic_ch_"):
         channel_type_array.append(c.ORGANIC_MEDIA)
+      elif channel_name.startswith("organic_rf_ch_"):
+        channel_type_array.append(c.ORGANIC_RF)
 
   np.random.seed(0)
   media_units_array = [
