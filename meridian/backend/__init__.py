@@ -153,6 +153,19 @@ def _jax_cast(x: Any, dtype: Any) -> "_jax.Array":
   return x.astype(dtype)
 
 
+def _jax_divide_no_nan(x, y):
+  """JAX implementation for divide_no_nan."""
+  import jax.numpy as jnp
+
+  return jnp.where(y != 0, jnp.divide(x, y), 0.0)
+
+
+def _jax_numpy_function(*args, **kwargs):  # pylint: disable=unused-argument
+  raise NotImplementedError(
+      "backend.numpy_function is not implemented for the JAX backend."
+  )
+
+
 # --- Backend Initialization ---
 _BACKEND = config.get_backend()
 
@@ -184,6 +197,7 @@ if _BACKEND == config.Backend.JAX:
   stack = ops.stack
   zeros = ops.zeros
   ones = ops.ones
+  ones_like = ops.ones_like
   repeat = ops.repeat
   where = ops.where
   transpose = ops.transpose
@@ -194,6 +208,12 @@ if _BACKEND == config.Backend.JAX:
   exp = ops.exp
   log = ops.log
   reduce_sum = ops.sum
+  reduce_mean = ops.mean
+  reduce_std = ops.std
+  reduce_any = ops.any
+  is_nan = ops.isnan
+  divide_no_nan = _jax_divide_no_nan
+  numpy_function = _jax_numpy_function
 
   float32 = ops.float32
   bool_ = ops.bool_
@@ -230,6 +250,7 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   stack = ops.stack
   zeros = ops.zeros
   ones = ops.ones
+  ones_like = ops.ones_like
   repeat = ops.repeat
   where = ops.where
   transpose = ops.transpose
@@ -240,6 +261,12 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   exp = ops.math.exp
   log = ops.math.log
   reduce_sum = ops.reduce_sum
+  reduce_mean = ops.reduce_mean
+  reduce_std = ops.math.reduce_std
+  reduce_any = ops.reduce_any
+  is_nan = ops.math.is_nan
+  divide_no_nan = ops.math.divide_no_nan
+  numpy_function = ops.numpy_function
 
   float32 = ops.float32
   bool_ = ops.bool
