@@ -205,9 +205,9 @@ class PriorDistribution:
       distribution is `HalfNormal(5.0)`.
     roi_m: Prior distribution on the ROI of each media channel. This parameter
       is only used when `paid_media_prior_type` is `'roi'`, in which case
-      `beta_m` is calculated as a deterministic function of `roi_rf`,
-      `alpha_rf`, `ec_rf`, `slope_rf`, and the spend associated with each media
-      channel. Default distribution is `LogNormal(0.2, 0.9)`. When `kpi_type` is
+      `beta_m` is calculated as a deterministic function of `roi_m`, `alpha_m`,
+      `ec_m`, `slope_m`, and the spend associated with each media channel.
+      Default distribution is `LogNormal(0.2, 0.9)`. When `kpi_type` is
       `'non_revenue'` and `revenue_per_kpi` is not provided, ROI is interpreted
       as incremental KPI units per monetary unit spent. In this case, the
       default value for `roi_m` and `roi_rf` will be ignored and a common ROI
