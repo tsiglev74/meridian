@@ -196,22 +196,27 @@ if _BACKEND == config.Backend.JAX:
   concatenate = ops.concatenate
   stack = ops.stack
   zeros = ops.zeros
+  zeros_like = ops.zeros_like
   ones = ops.ones
   ones_like = ops.ones_like
   repeat = ops.repeat
+  tile = ops.tile
   where = ops.where
   transpose = ops.transpose
   broadcast_to = ops.broadcast_to
   cast = _jax_cast
+  expand_dims = ops.expand_dims
 
   einsum = ops.einsum
   exp = ops.exp
   log = ops.log
+  cumsum = ops.cumsum
   reduce_sum = ops.sum
   reduce_mean = ops.mean
   reduce_std = ops.std
   reduce_any = ops.any
   is_nan = ops.isnan
+  divide = ops.divide
   divide_no_nan = _jax_divide_no_nan
   numpy_function = _jax_numpy_function
 
@@ -249,22 +254,27 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   concatenate = ops.concat
   stack = ops.stack
   zeros = ops.zeros
+  zeros_like = ops.zeros_like
   ones = ops.ones
   ones_like = ops.ones_like
   repeat = ops.repeat
+  tile = ops.tile
   where = ops.where
   transpose = ops.transpose
   broadcast_to = ops.broadcast_to
   cast = ops.cast
+  expand_dims = ops.expand_dims
 
   einsum = ops.einsum
   exp = ops.math.exp
   log = ops.math.log
+  cumsum = ops.cumsum
   reduce_sum = ops.reduce_sum
   reduce_mean = ops.reduce_mean
   reduce_std = ops.math.reduce_std
   reduce_any = ops.reduce_any
   is_nan = ops.math.is_nan
+  divide = ops.divide
   divide_no_nan = ops.math.divide_no_nan
   numpy_function = ops.numpy_function
 

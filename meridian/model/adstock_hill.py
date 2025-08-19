@@ -54,7 +54,7 @@ def compute_decay_weights(
   Returns:
       A tensor of weights with a shape of `(*alpha.shape, len(l_range))`.
   """
-  expanded_alpha = backend.ops.expand_dims(alpha, -1)
+  expanded_alpha = backend.expand_dims(alpha, -1)
   match decay_function:
     case constants.GEOMETRIC_DECAY:
       weights = expanded_alpha**l_range
@@ -65,10 +65,8 @@ def compute_decay_weights(
       raise ValueError(f'Unsupported decay function: {decay_function}')
 
   if normalize:
-    normalization_factors = backend.ops.reduce_sum(
-        weights, axis=-1, keepdims=True
-    )
-    return backend.ops.divide(weights, normalization_factors)
+    normalization_factors = backend.reduce_sum(weights, axis=-1, keepdims=True)
+    return backend.divide(weights, normalization_factors)
   return weights
 
 
@@ -143,7 +141,7 @@ def _adstock(
         + (required_n_media_times - n_media_times,)
         + (media.shape[-1],)
     )
-    media = backend.concatenate([backend.ops.zeros(pad_shape), media], axis=-2)
+    media = backend.concatenate([backend.zeros(pad_shape), media], axis=-2)
 
   # Adstock calculation.
   window_list = [None] * window_size
@@ -190,8 +188,8 @@ def _hill(
         '`media` contains a different number of channels than `slope` and `ec`.'
     )
 
-  t1 = media ** slope[..., backend.ops.newaxis, backend.ops.newaxis, :]
-  t2 = (ec**slope)[..., backend.ops.newaxis, backend.ops.newaxis, :]
+  t1 = media ** slope[..., backend.newaxis, backend.newaxis, :]
+  t2 = (ec**slope)[..., backend.newaxis, backend.newaxis, :]
   return t1 / (t1 + t2)
 
 
@@ -307,8 +305,8 @@ class HillTransformer(AdstockHillTransformer):
 
 
 def transform_non_negative_reals_distribution(
-    distribution: backend.tfd.Distribution
-    ) -> backend.tfd.TransformedDistribution:
+    distribution: backend.tfd.Distribution,
+) -> backend.tfd.TransformedDistribution:
   """Transforms a distribution with support on `[0, infinity)` to `(0, 1]`.
 
   This allows for defining a prior on `alpha_*`, the exponent of the binomial
@@ -321,8 +319,8 @@ def transform_non_negative_reals_distribution(
   For example, to define a `LogNormal(0.2, 0.9)` prior on `alpha_*`:
 
   ```python
-  import tensorflow_probability as tfp
-  alpha_star_prior = tfp.distributions.LogNormal(0.2, 0.9)
+  from meridian import backend
+  alpha_star_prior = backend.tfd.LogNormal(0.2, 0.9)
   alpha_prior = transform_non_negative_reals_distribution(alpha_star_prior)
   prior = prior_distribution.PriorDistribution(
       alpha_m=alpha_prior,
