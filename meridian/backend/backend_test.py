@@ -208,6 +208,62 @@ class BackendTest(parameterized.TestCase):
     self.assertIsInstance(result, backend.Tensor)
     test_utils.assert_allclose(result, expected)
 
+  _broadcast_dynamic_shape_test_cases = [
+      dict(
+          testcase_name="broadcast_scalar_to_vector",
+          shape_x=(1,),
+          shape_y=(3,),
+          expected=(3,),
+      ),
+      dict(
+          testcase_name="broadcast_vector_to_matrix",
+          shape_x=(3,),
+          shape_y=(2, 3),
+          expected=(2, 3),
+      ),
+      dict(
+          testcase_name="broadcast_different_shapes",
+          shape_x=(2, 1),
+          shape_y=(1, 3),
+          expected=(2, 3),
+      ),
+  ]
+
+  @parameterized.product(
+      backend_name=[config.Backend.TENSORFLOW, config.Backend.JAX],
+      test_case=_broadcast_dynamic_shape_test_cases,
+  )
+  def test_broadcast_dynamic_shape(self, backend_name, test_case):
+    config.set_backend(backend_name)
+    importlib.reload(backend)
+    shape_x = test_case["shape_x"]
+    shape_y = test_case["shape_y"]
+    expected = test_case["expected"]
+
+    result = backend.broadcast_dynamic_shape(shape_x, shape_y)
+
+    test_utils.assert_allclose(result, expected)
+
+  _tensor_shape_test_cases = [
+      dict(testcase_name="from_int", dims=5, expected=(5,)),
+      dict(testcase_name="from_list", dims=[2, 3], expected=(2, 3)),
+      dict(testcase_name="from_tuple", dims=(4, 1), expected=(4, 1)),
+  ]
+
+  @parameterized.product(
+      backend_name=[config.Backend.TENSORFLOW, config.Backend.JAX],
+      test_case=_tensor_shape_test_cases,
+  )
+  def test_tensor_shape(self, backend_name, test_case):
+    config.set_backend(backend_name)
+    importlib.reload(backend)
+    dims = test_case["dims"]
+    expected = test_case["expected"]
+
+    result = backend.TensorShape(dims)
+
+    test_utils.assert_allequal(result, expected)
+
   _arange_test_cases = [
       dict(
           testcase_name="stop_only_defaults_to_int64",

@@ -269,6 +269,21 @@ def _tf_argmax(tensor, axis=None):
   return tf.argmax(tensor, axis=axis)
 
 
+def _jax_broadcast_dynamic_shape(shape_x, shape_y):
+  """JAX implementation for broadcast_dynamic_shape."""
+  import jax.numpy as jnp
+
+  return jnp.broadcast_shapes(shape_x, shape_y)
+
+
+def _jax_tensor_shape(dims):
+  """JAX implementation for TensorShape."""
+  if isinstance(dims, int):
+    return (dims,)
+
+  return tuple(dims)
+
+
 # --- Backend Initialization ---
 _BACKEND = config.get_backend()
 
@@ -298,6 +313,7 @@ if _BACKEND == config.Backend.JAX:
   arange = _jax_arange
   concatenate = ops.concatenate
   stack = ops.stack
+  split = ops.split
   zeros = ops.zeros
   zeros_like = ops.zeros_like
   ones = ops.ones
@@ -307,6 +323,7 @@ if _BACKEND == config.Backend.JAX:
   where = ops.where
   transpose = ops.transpose
   broadcast_to = ops.broadcast_to
+  broadcast_dynamic_shape = _jax_broadcast_dynamic_shape
   cast = _jax_cast
   expand_dims = ops.expand_dims
   fill = _jax_fill
@@ -336,6 +353,7 @@ if _BACKEND == config.Backend.JAX:
   float32 = ops.float32
   bool_ = ops.bool_
   newaxis = ops.newaxis
+  TensorShape = _jax_tensor_shape
 
   function = jax.jit
   allclose = ops.allclose
@@ -366,6 +384,7 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   arange = _tf_arange
   concatenate = ops.concat
   stack = ops.stack
+  split = ops.split
   zeros = ops.zeros
   zeros_like = ops.zeros_like
   ones = ops.ones
@@ -375,6 +394,7 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   where = ops.where
   transpose = ops.transpose
   broadcast_to = ops.broadcast_to
+  broadcast_dynamic_shape = ops.broadcast_dynamic_shape
   cast = ops.cast
   expand_dims = ops.expand_dims
   fill = _tf_fill
@@ -404,6 +424,7 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   float32 = ops.float32
   bool_ = ops.bool
   newaxis = ops.newaxis
+  TensorShape = ops.TensorShape
 
   function = ops.function
   allclose = ops.experimental.numpy.allclose
