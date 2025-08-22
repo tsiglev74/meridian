@@ -166,6 +166,109 @@ def _jax_numpy_function(*args, **kwargs):  # pylint: disable=unused-argument
   )
 
 
+def _jax_get_indices_where(condition):
+  """JAX implementation for get_indices_where."""
+  import jax.numpy as jnp
+
+  return jnp.stack(jnp.where(condition), axis=-1)
+
+
+def _tf_get_indices_where(condition):
+  """TensorFlow implementation for get_indices_where."""
+  import tensorflow as tf
+
+  return tf.where(condition)
+
+
+def _jax_unique_with_counts(x):
+  """JAX implementation for unique_with_counts."""
+  import jax.numpy as jnp
+
+  y, counts = jnp.unique(x, return_counts=True)
+  # The TF version returns a tuple of (y, idx, count). The idx is not used in
+  # the calling code, so we can return None for it to maintain tuple structure.
+  return y, None, counts
+
+
+def _tf_unique_with_counts(x):
+  """TensorFlow implementation for unique_with_counts."""
+  import tensorflow as tf
+
+  return tf.unique_with_counts(x)
+
+
+def _jax_boolean_mask(tensor, mask):
+  """JAX implementation for boolean_mask."""
+  # JAX uses standard array indexing for boolean masking.
+  return tensor[mask]
+
+
+def _tf_boolean_mask(tensor, mask):
+  """TensorFlow implementation for boolean_mask."""
+  import tensorflow as tf
+
+  return tf.boolean_mask(tensor, mask)
+
+
+def _jax_gather(params, indices):
+  """JAX implementation for gather."""
+  # JAX uses standard array indexing for gather operations.
+  return params[indices]
+
+
+def _tf_gather(params, indices):
+  """TensorFlow implementation for gather."""
+  import tensorflow as tf
+
+  return tf.gather(params, indices)
+
+
+def _jax_fill(dims, value):
+  """JAX implementation for fill."""
+  import jax.numpy as jnp
+
+  return jnp.full(dims, value)
+
+
+def _tf_fill(dims, value):
+  """TensorFlow implementation for fill."""
+  import tensorflow as tf
+
+  return tf.fill(dims, value)
+
+
+def _jax_argmax(tensor, axis=None):
+  """JAX implementation for argmax, aligned with TensorFlow's default.
+
+  This function finds the indices of the maximum values along a specified axis.
+  Crucially, it mimics the default behavior of TensorFlow's `tf.argmax`, where
+  if `axis` is `None`, the operation defaults to `axis=0`. This differs from
+  NumPy's and JAX's native `argmax` behavior, which would flatten the array
+  before finding the index.
+
+  Args:
+    tensor: The input JAX array.
+    axis: An integer specifying the axis along which to find the index of the
+      maximum value. If `None`, it defaults to `0` to match TensorFlow's
+      behavior.
+
+  Returns:
+    A JAX array containing the indices of the maximum values.
+  """
+  import jax.numpy as jnp
+
+  if axis is None:
+    axis = 0
+  return jnp.argmax(tensor, axis=axis)
+
+
+def _tf_argmax(tensor, axis=None):
+  """TensorFlow implementation for argmax."""
+  import tensorflow as tf
+
+  return tf.argmax(tensor, axis=axis)
+
+
 # --- Backend Initialization ---
 _BACKEND = config.get_backend()
 
@@ -206,18 +309,28 @@ if _BACKEND == config.Backend.JAX:
   broadcast_to = ops.broadcast_to
   cast = _jax_cast
   expand_dims = ops.expand_dims
+  fill = _jax_fill
+  gather = _jax_gather
+  boolean_mask = _jax_boolean_mask
+  equal = ops.equal
+  get_indices_where = _jax_get_indices_where
 
   einsum = ops.einsum
   exp = ops.exp
   log = ops.log
+  absolute = ops.abs
+  argmax = _jax_argmax
   cumsum = ops.cumsum
   reduce_sum = ops.sum
   reduce_mean = ops.mean
   reduce_std = ops.std
   reduce_any = ops.any
+  reduce_min = ops.min
+  reduce_max = ops.max
   is_nan = ops.isnan
   divide = ops.divide
   divide_no_nan = _jax_divide_no_nan
+  unique_with_counts = _jax_unique_with_counts
   numpy_function = _jax_numpy_function
 
   float32 = ops.float32
@@ -264,18 +377,28 @@ elif _BACKEND == config.Backend.TENSORFLOW:
   broadcast_to = ops.broadcast_to
   cast = ops.cast
   expand_dims = ops.expand_dims
+  fill = _tf_fill
+  gather = _tf_gather
+  boolean_mask = _tf_boolean_mask
+  equal = ops.equal
+  get_indices_where = _tf_get_indices_where
 
   einsum = ops.einsum
   exp = ops.math.exp
   log = ops.math.log
+  absolute = ops.math.abs
+  argmax = _tf_argmax
   cumsum = ops.cumsum
   reduce_sum = ops.reduce_sum
   reduce_mean = ops.reduce_mean
   reduce_std = ops.math.reduce_std
   reduce_any = ops.reduce_any
+  reduce_min = ops.reduce_min
+  reduce_max = ops.reduce_max
   is_nan = ops.math.is_nan
   divide = ops.divide
   divide_no_nan = ops.math.divide_no_nan
+  unique_with_counts = _tf_unique_with_counts
   numpy_function = ops.numpy_function
 
   float32 = ops.float32
