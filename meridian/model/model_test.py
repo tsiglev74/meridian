@@ -918,6 +918,9 @@ class ModelTest(
           testcase_name="rf_prior_type_roi",
           media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
           rf_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
+          organic_media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          organic_rf_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          non_media_treatments_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
           error_msg=(
               "`population_scaled_kpi` cannot be constant with `rf_prior_type`"
               ' = "roi".'
@@ -927,16 +930,61 @@ class ModelTest(
           testcase_name="media_prior_type_mroi",
           media_prior_type=constants.TREATMENT_PRIOR_TYPE_MROI,
           rf_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          organic_media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          organic_rf_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          non_media_treatments_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
           error_msg=(
               "`population_scaled_kpi` cannot be constant with"
               ' `media_prior_type` = "mroi".'
           ),
       ),
+      dict(
+          testcase_name="organic_media_prior_type_contribution",
+          media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          rf_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          organic_media_prior_type=constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
+          organic_rf_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          non_media_treatments_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          error_msg=(
+              "`population_scaled_kpi` cannot be constant with"
+              ' `organic_media_prior_type` = "contribution".'
+          ),
+      ),
+      dict(
+          testcase_name="organic_rf_prior_type_contribution",
+          media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          rf_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          organic_media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          organic_rf_prior_type=constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
+          non_media_treatments_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          error_msg=(
+              "`population_scaled_kpi` cannot be constant with"
+              ' `organic_rf_prior_type` = "contribution".'
+          ),
+      ),
+      dict(
+          testcase_name="non_media_treatments_prior_type_contribution",
+          media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          rf_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          organic_media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          organic_rf_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          non_media_treatments_prior_type=constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
+          error_msg=(
+              "`population_scaled_kpi` cannot be constant with"
+              ' `non_media_treatments_prior_type` = "contribution".'
+          ),
+      ),
   )
-  def test_init_validate_kpi_transformer(
-      self, media_prior_type: str, rf_prior_type: str, error_msg: str
+  def test_init_validate_kpi_transformer_geo_model(
+      self,
+      media_prior_type: str,
+      rf_prior_type: str,
+      organic_media_prior_type: str,
+      organic_rf_prior_type: str,
+      non_media_treatments_prior_type: str,
+      error_msg: str,
   ):
-    valid_input_data = self.input_data_with_media_and_rf
+    valid_input_data = self.input_data_non_media_and_organic
     kpi = valid_input_data.kpi
     kpi.data = np.zeros_like(kpi.data)
     zero_kpi_input_data = dataclasses.replace(
@@ -952,6 +1000,9 @@ class ModelTest(
           model_spec=spec.ModelSpec(
               media_prior_type=media_prior_type,
               rf_prior_type=rf_prior_type,
+              organic_media_prior_type=organic_media_prior_type,
+              organic_rf_prior_type=organic_rf_prior_type,
+              non_media_treatments_prior_type=non_media_treatments_prior_type,
           ),
       )
 
@@ -959,20 +1010,88 @@ class ModelTest(
       dict(
           testcase_name="media_prior_type_roi",
           media_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
+          rf_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          organic_media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          organic_rf_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          non_media_treatments_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
           error_msg='`kpi` cannot be constant with `media_prior_type` = "roi".',
       ),
       dict(
           testcase_name="media_prior_type_mroi",
           media_prior_type=constants.TREATMENT_PRIOR_TYPE_MROI,
+          rf_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          organic_media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          organic_rf_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          non_media_treatments_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
           error_msg=(
               '`kpi` cannot be constant with `media_prior_type` = "mroi".'
           ),
       ),
+      dict(
+          testcase_name="rf_prior_type_roi",
+          media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          rf_prior_type=constants.TREATMENT_PRIOR_TYPE_ROI,
+          organic_media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          organic_rf_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          non_media_treatments_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          error_msg='`kpi` cannot be constant with `rf_prior_type` = "roi".',
+      ),
+      dict(
+          testcase_name="rf_prior_type_mroi",
+          media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          rf_prior_type=constants.TREATMENT_PRIOR_TYPE_MROI,
+          organic_media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          organic_rf_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          non_media_treatments_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          error_msg='`kpi` cannot be constant with `rf_prior_type` = "mroi".',
+      ),
+      dict(
+          testcase_name="organic_media_prior_type_contribution",
+          media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          rf_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          organic_media_prior_type=constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
+          organic_rf_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          non_media_treatments_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          error_msg=(
+              "`kpi` cannot be constant with `organic_media_prior_type` ="
+              ' "contribution".'
+          ),
+      ),
+      dict(
+          testcase_name="organic_rf_prior_type_contribution",
+          media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          rf_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          organic_media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          organic_rf_prior_type=constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
+          non_media_treatments_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          error_msg=(
+              "`kpi` cannot be constant with `organic_rf_prior_type` ="
+              ' "contribution".'
+          ),
+      ),
+      dict(
+          testcase_name="non_media_treatments_prior_type_contribution",
+          media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          rf_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          organic_media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          organic_rf_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+          non_media_treatments_prior_type=constants.TREATMENT_PRIOR_TYPE_CONTRIBUTION,
+          error_msg=(
+              "`kpi` cannot be constant with"
+              ' `non_media_treatments_prior_type` = "contribution".'
+          ),
+      ),
   )
   def test_init_validate_kpi_transformer_national_model(
-      self, media_prior_type: str, error_msg: str
+      self,
+      media_prior_type: str,
+      rf_prior_type: str,
+      organic_media_prior_type: str,
+      organic_rf_prior_type: str,
+      non_media_treatments_prior_type: str,
+      error_msg: str,
   ):
-    valid_input_data = self.national_input_data_media_only
+    valid_input_data = self.national_input_data_non_media_and_organic
     kpi = valid_input_data.kpi
     kpi.data = np.zeros_like(kpi.data)
     zero_kpi_input_data = dataclasses.replace(
@@ -987,41 +1106,48 @@ class ModelTest(
           input_data=zero_kpi_input_data,
           model_spec=spec.ModelSpec(
               media_prior_type=media_prior_type,
+              rf_prior_type=rf_prior_type,
+              organic_media_prior_type=organic_media_prior_type,
+              organic_rf_prior_type=organic_rf_prior_type,
+              non_media_treatments_prior_type=non_media_treatments_prior_type,
           ),
       )
 
-  def test_init_validate_kpi_transformer_ok(self):
-    valid_input_data = self.input_data_with_media_and_rf
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="geo",
+          input_data_type="geo",
+      ),
+      dict(
+          testcase_name="national",
+          input_data_type="national",
+      ),
+  )
+  def test_init_validate_kpi_transformer_ok(self, input_data_type):
+    valid_input_data = (
+        self.national_input_data_non_media_and_organic
+        if input_data_type == "national"
+        else self.input_data_non_media_and_organic
+    )
     kpi = valid_input_data.kpi
     kpi.data = np.zeros_like(kpi.data)
     zero_kpi_input_data = dataclasses.replace(
         valid_input_data,
         kpi=kpi,
     )
+
+    prior_type = constants.TREATMENT_PRIOR_TYPE_COEFFICIENT
     meridian = model.Meridian(
         input_data=zero_kpi_input_data,
         model_spec=spec.ModelSpec(
-            media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
-            rf_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
+            media_prior_type=prior_type,
+            rf_prior_type=prior_type,
+            organic_media_prior_type=prior_type,
+            organic_rf_prior_type=prior_type,
+            non_media_treatments_prior_type=prior_type,
         ),
     )
-
-    valid_national_input_data = self.national_input_data_media_only
-    national_kpi = valid_national_input_data.kpi
-    national_kpi.data = np.zeros_like(national_kpi.data)
-    zero_kpi_national_input_data = dataclasses.replace(
-        valid_national_input_data,
-        kpi=national_kpi,
-    )
-    national_meridian = model.Meridian(
-        input_data=zero_kpi_national_input_data,
-        model_spec=spec.ModelSpec(
-            media_prior_type=constants.TREATMENT_PRIOR_TYPE_COEFFICIENT,
-        ),
-    )
-
     self.assertIsNotNone(meridian)
-    self.assertIsNotNone(national_meridian)
 
   def test_broadcast_prior_distribution_compute_property(self):
     meridian = model.Meridian(input_data=self.input_data_with_media_and_rf)
