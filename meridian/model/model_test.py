@@ -1950,7 +1950,7 @@ class NonPaidModelTest(
         atol=atol,
     )
 
-  def test_get_joint_dist_zeros(self):
+  def test_get_joint_dist_constants(self):
     model_spec = spec.ModelSpec(
         prior=prior_distribution.PriorDistribution(
             knot_values=backend.tfd.Deterministic(0),
@@ -1976,14 +1976,6 @@ class NonPaidModelTest(
             alpha_rf=backend.tfd.Deterministic(0),
             alpha_om=backend.tfd.Deterministic(0),
             alpha_orf=backend.tfd.Deterministic(0),
-            ec_m=backend.tfd.Deterministic(0),
-            ec_rf=backend.tfd.Deterministic(0),
-            ec_om=backend.tfd.Deterministic(0),
-            ec_orf=backend.tfd.Deterministic(0),
-            slope_m=backend.tfd.Deterministic(0),
-            slope_rf=backend.tfd.Deterministic(0),
-            slope_om=backend.tfd.Deterministic(0),
-            slope_orf=backend.tfd.Deterministic(0),
             sigma=backend.tfd.Deterministic(0),
             roi_m=backend.tfd.Deterministic(0),
             roi_rf=backend.tfd.Deterministic(0),
