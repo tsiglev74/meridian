@@ -70,6 +70,19 @@ class PriorDistributionSamplerTest(
         meridian.inference_data.prior, meridian2.inference_data.prior
     )
 
+  def test_prior_distribution_sampler_uses_seed(self):
+    model_spec = spec.ModelSpec()
+    meridian = model.Meridian(
+        input_data=self.short_input_data_with_media_and_rf,
+        model_spec=model_spec,
+    )
+    sampler = prior_sampler.PriorDistributionSampler(meridian)
+    with mock.patch.object(
+        backend, "set_random_seed", autospec=True
+    ) as mock_set_seed:
+      sampler(n_draws=1, seed=123)
+      mock_set_seed.assert_called_once_with(123)
+
   def test_sample_prior_media_and_rf_returns_correct_shape(self):
     self.enter_context(
         mock.patch.object(

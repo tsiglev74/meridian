@@ -503,7 +503,7 @@ class PriorDistributionSampler:
     # For stateful sampling, the random seed must be set to ensure that any
     # random numbers that are generated are deterministic.
     if seed is not None:
-      backend.set_random_seed(1)
+      backend.set_random_seed(seed)
 
     prior = mmm.prior_broadcast
     # `sample_shape` is prepended to the shape of each BatchBroadcast in `prior`
