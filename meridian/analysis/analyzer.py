@@ -3797,10 +3797,12 @@ class Analyzer:
       input_tensor = self._meridian.kpi * self._meridian.revenue_per_kpi
     else:
       input_tensor = self._meridian.kpi
-    actual = np.asarray(self.filter_and_aggregate_geos_and_times(
-        tensor=input_tensor,
-        **dims_kwargs,
-    ))
+    actual = np.asarray(
+        self.filter_and_aggregate_geos_and_times(
+            tensor=input_tensor,
+            **dims_kwargs,
+        )
+    )
     expected = np.mean(
         self.expected_outcome(
             batch_size=batch_size, use_kpi=use_kpi, **dims_kwargs
@@ -4420,9 +4422,9 @@ class Analyzer:
       x_range_full_shape = linspace
 
     # Flatten this into a list.
-    x_range_list = (
-        np.asarray(tf.reshape(tf.transpose(x_range_full_shape), [-1])).tolist()
-    )
+    x_range_list = np.asarray(
+        tf.reshape(tf.transpose(x_range_full_shape), [-1])
+    ).tolist()
 
     # Doubles each value in the list to account for alternating prior
     # and posterior.
@@ -4954,11 +4956,13 @@ class Analyzer:
     }
 
     if channel_spend.ndim == 3:
-      aggregated_spend = np.asarray(self.filter_and_aggregate_geos_and_times(
-          channel_spend,
-          has_media_dim=True,
-          **dim_kwargs,
-      ))
+      aggregated_spend = np.asarray(
+          self.filter_and_aggregate_geos_and_times(
+              channel_spend,
+              has_media_dim=True,
+              **dim_kwargs,
+          )
+      )
     # channel_spend.ndim can only be 3 or 1.
     else:
       # media spend can have more time points than the model time points
