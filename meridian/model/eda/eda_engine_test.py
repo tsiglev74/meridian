@@ -18,12 +18,14 @@ from meridian import constants
 from meridian.model import model
 from meridian.model import model_test_data
 from meridian.model.eda import eda_engine
+import tensorflow as tf
 import xarray as xr
 
 
 class EDAEngineTest(
     parameterized.TestCase,
     model_test_data.WithInputDataSamples,
+    tf.test.TestCase,
 ):
 
   def setUp(self):
@@ -54,19 +56,140 @@ class EDAEngineTest(
   def test_controls_scaled_da_present(self, input_data_fixture, expected_shape):
     meridian = model.Meridian(getattr(self, input_data_fixture))
     engine = eda_engine.EDAEngine(meridian)
-    controls_da = engine.controls_scaled_da
-    self.assertIsInstance(controls_da, xr.DataArray)
-    self.assertEqual(controls_da.shape, expected_shape)
+    controls_scaled_da = engine.controls_scaled_da
+    self.assertIsInstance(controls_scaled_da, xr.DataArray)
+    self.assertEqual(controls_scaled_da.shape, expected_shape)
     self.assertCountEqual(
-        controls_da.coords.keys(),
+        controls_scaled_da.coords.keys(),
         [constants.GEO, constants.TIME, constants.CONTROL_VARIABLE],
     )
+    self.assertAllClose(controls_scaled_da.values, meridian.controls_scaled)
+
+  # --- Test cases for media_raw_da ---
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="geo",
+          input_data_fixture="input_data_with_media_and_rf",
+          expected_shape=(
+              model_test_data.WithInputDataSamples._N_GEOS,
+              model_test_data.WithInputDataSamples._N_TIMES,
+              model_test_data.WithInputDataSamples._N_MEDIA_CHANNELS,
+          ),
+      ),
+      dict(
+          testcase_name="national",
+          input_data_fixture="national_input_data_media_and_rf",
+          expected_shape=(
+              model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
+              model_test_data.WithInputDataSamples._N_TIMES,
+              model_test_data.WithInputDataSamples._N_MEDIA_CHANNELS,
+          ),
+      ),
+  )
+  def test_media_raw_da_present(self, input_data_fixture, expected_shape):
+    meridian = model.Meridian(getattr(self, input_data_fixture))
+    engine = eda_engine.EDAEngine(meridian)
+    media_da = engine.media_raw_da
+    self.assertIsInstance(media_da, xr.DataArray)
+    self.assertEqual(media_da.shape, expected_shape)
+    self.assertCountEqual(
+        media_da.coords.keys(),
+        [constants.GEO, constants.TIME, constants.MEDIA_CHANNEL],
+    )
+    start = meridian.n_media_times - meridian.n_times
+    true_media_da = meridian.input_data.media
+    self.assertIsInstance(true_media_da, xr.DataArray)
+    self.assertAllClose(media_da.values, true_media_da.values[:, start:, :])
+
+  # --- Test cases for media_scaled_da ---
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="geo",
+          input_data_fixture="input_data_with_media_and_rf",
+          expected_shape=(
+              model_test_data.WithInputDataSamples._N_GEOS,
+              model_test_data.WithInputDataSamples._N_TIMES,
+              model_test_data.WithInputDataSamples._N_MEDIA_CHANNELS,
+          ),
+      ),
+      dict(
+          testcase_name="national",
+          input_data_fixture="national_input_data_media_and_rf",
+          expected_shape=(
+              model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
+              model_test_data.WithInputDataSamples._N_TIMES,
+              model_test_data.WithInputDataSamples._N_MEDIA_CHANNELS,
+          ),
+      ),
+  )
+  def test_media_scaled_da_present(self, input_data_fixture, expected_shape):
+    meridian = model.Meridian(getattr(self, input_data_fixture))
+    engine = eda_engine.EDAEngine(meridian)
+    media_da = engine.media_scaled_da
+    self.assertIsInstance(media_da, xr.DataArray)
+    self.assertEqual(media_da.shape, expected_shape)
+    self.assertCountEqual(
+        media_da.coords.keys(),
+        [constants.GEO, constants.TIME, constants.MEDIA_CHANNEL],
+    )
+    start = meridian.n_media_times - meridian.n_times
+    self.assertAllClose(
+        media_da.values, meridian.media_tensors.media_scaled[:, start:, :]
+    )
+
+  # --- Test cases for media_spend_da ---
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="geo",
+          input_data_fixture="input_data_with_media_and_rf",
+          expected_shape=(
+              model_test_data.WithInputDataSamples._N_GEOS,
+              model_test_data.WithInputDataSamples._N_TIMES,
+              model_test_data.WithInputDataSamples._N_MEDIA_CHANNELS,
+          ),
+      ),
+      dict(
+          testcase_name="national",
+          input_data_fixture="national_input_data_media_and_rf",
+          expected_shape=(
+              model_test_data.WithInputDataSamples._N_GEOS_NATIONAL,
+              model_test_data.WithInputDataSamples._N_TIMES,
+              model_test_data.WithInputDataSamples._N_MEDIA_CHANNELS,
+          ),
+      ),
+  )
+  def test_media_spend_da_present(self, input_data_fixture, expected_shape):
+    meridian = model.Meridian(getattr(self, input_data_fixture))
+    engine = eda_engine.EDAEngine(meridian)
+    media_da = engine.media_spend_da
+    self.assertIsInstance(media_da, xr.DataArray)
+    self.assertEqual(media_da.shape, expected_shape)
+    self.assertCountEqual(
+        media_da.coords.keys(),
+        [constants.GEO, constants.TIME, constants.MEDIA_CHANNEL],
+    )
+    self.assertAllClose(media_da.values, meridian.media_tensors.media_spend)
 
   @parameterized.named_parameters(
       dict(
           testcase_name="controls_scaled_da",
           input_data_fixture="input_data_with_media_and_rf_no_controls",
           property_name="controls_scaled_da",
+      ),
+      dict(
+          testcase_name="media_raw_da",
+          input_data_fixture="input_data_with_rf_only",
+          property_name="media_raw_da",
+      ),
+      dict(
+          testcase_name="media_scaled_da",
+          input_data_fixture="input_data_with_rf_only",
+          property_name="media_scaled_da",
+      ),
+      dict(
+          testcase_name="media_spend_da",
+          input_data_fixture="input_data_with_rf_only",
+          property_name="media_spend_da",
       ),
   )
   def test_property_absent(self, input_data_fixture, property_name):
