@@ -32,8 +32,10 @@ class EDAEngine:
   def controls_scaled_da(self) -> xr.DataArray | None:
     if self._meridian.input_data.controls is None:
       return None
-    controls_scaled_da = self._meridian.input_data.controls.copy()
-    controls_scaled_da.values = self._meridian.controls_scaled
+    controls_scaled_da = _data_array_like(
+        da=self._meridian.input_data.controls,
+        values=self._meridian.controls_scaled,
+    )
     return controls_scaled_da
 
   @functools.cached_property
@@ -62,6 +64,42 @@ class EDAEngine:
     )
     # No need to truncate the media time for media spend.
     return media_spend_da
+
+  @functools.cached_property
+  def organic_media_raw_da(self) -> xr.DataArray | None:
+    if self._meridian.input_data.organic_media is None:
+      return None
+    return self._truncate_media_time(self._meridian.input_data.organic_media)
+
+  @functools.cached_property
+  def organic_media_scaled_da(self) -> xr.DataArray | None:
+    if self._meridian.input_data.organic_media is None:
+      return None
+    organic_media_scaled_da = _data_array_like(
+        da=self._meridian.input_data.organic_media,
+        values=self._meridian.organic_media_tensors.organic_media_scaled,
+    )
+    return self._truncate_media_time(organic_media_scaled_da)
+
+  @functools.cached_property
+  def non_media_scaled_da(self) -> xr.DataArray | None:
+    if self._meridian.input_data.non_media_treatments is None:
+      return None
+    non_media_scaled_da = _data_array_like(
+        da=self._meridian.input_data.non_media_treatments,
+        values=self._meridian.non_media_treatments_normalized,
+    )
+    return non_media_scaled_da
+
+  @functools.cached_property
+  def rf_spend_da(self) -> xr.DataArray | None:
+    if self._meridian.input_data.rf_spend is None:
+      return None
+    rf_spend_da = _data_array_like(
+        da=self._meridian.input_data.rf_spend,
+        values=self._meridian.rf_tensors.rf_spend,
+    )
+    return rf_spend_da
 
   def _truncate_media_time(self, da: xr.DataArray) -> xr.DataArray:
     """Truncates the first `start` elements of the media time of a variable."""
